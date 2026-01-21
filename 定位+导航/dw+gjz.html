@@ -1,0 +1,592 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+  <title>智能路径规划</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .search-results {
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .route-panel {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 50%;
+        max-width: 300px;
+        background-color: white;
+        border-radius: 8px;
+        shadow: 0 2px 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+        overflow: hidden;
+      }
+      .map-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+    }
+  </style>
+  <script src="https://a.amap.com/jsapi_demos/static/demo-center/js/demoutils.js"></script>
+  <script type="text/javascript" src="https://cache.amap.com/lbs/static/addToolbar.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+  <!-- 顶部导航栏 -->
+  <header class="bg-blue-600 text-white shadow-md">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+      <h1 class="text-xl font-bold flex items-center">
+        <i class="fa fa-map-o mr-2"></i>智能路径规划
+      </h1>
+      <button id="resetBtn" class="bg-white text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-100 transition">
+        <i class="fa fa-refresh mr-1"></i>重置
+      </button>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="flex-1 container mx-auto px-4 py-4 flex flex-col md:flex-row gap-4">
+    <!-- 左侧搜索区域 -->
+    <div class="w-full md:w-1/3 bg-white rounded-lg shadow-md p-4">
+      <h2 class="text-lg font-semibold mb-4 text-gray-700">路线规划</h2>
+      
+      <!-- 起点设置 -->
+      <div class="mb-4">
+        <h3 class="text-md font-medium mb-2 text-gray-700 flex items-center">
+          <i class="fa fa-map-marker text-green-500 mr-2"></i>起点
+        </h3>
+        <div class="flex flex-col space-y-2">
+          <div class="flex space-x-2">
+            <button id="useMapStartPoint" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm transition flex items-center flex-1">
+              <i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点
+            </button>
+            <button id="locateCurrentBtn" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded text-sm transition flex items-center">
+              <i class="fa fa-location-arrow mr-1"></i>定位当前
+            </button>
+          </div>
+          <div class="relative">
+            <input type="text" id="startPointInput" 
+                  class="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入起点名称">
+            <div id="startSearchResults" class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg search-results hidden"></div>
+          </div>
+          <div id="startPointInfo" class="text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- 终点设置 -->
+      <div class="mb-4">
+        <h3 class="text-md font-medium mb-2 text-gray-700 flex items-center">
+          <i class="fa fa-flag text-red-500 mr-2"></i>终点
+        </h3>
+        <div class="flex flex-col space-y-2">
+          <button id="useMapEndPoint" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm transition flex items-center">
+            <i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点
+          </button>
+          <div class="relative">
+            <input type="text" id="endPointInput" 
+                  class="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入终点名称">
+            <div id="endSearchResults" class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg search-results hidden"></div>
+          </div>
+          <div id="endPointInfo" class="text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- 路线规划按钮 -->
+      <button id="routeBtn" disabled
+              class="w-full bg-gray-400 hover:bg-gray-500 text-white px-6 py-2 rounded-md text-base font-medium transition cursor-not-allowed">
+        <i class="fa fa-road mr-2"></i>规划路线
+      </button>
+    </div>
+
+    <!-- 右侧地图区域 -->
+    <div class="w-full md:w-2/3 bg-white rounded-lg shadow-md overflow-hidden relative">
+      <div id="container" class="map-container w-full h-full"></div>
+      <!-- 路线详情框 - 调整到地图右上角 -->
+      <div id="routePanel" class="route-panel hidden">
+        <div class="p-3 bg-blue-500 text-white flex justify-between items-center">
+          <h3 class="text-md font-medium flex items-center">
+            <i class="fa fa-directions mr-2"></i>路线详情
+          </h3>
+          <button id="closeRoutePanel" class="text-white hover:text-gray-200">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+        <div class="p-3">
+          <div id="routeInfo" class="text-sm text-gray-600 mb-2"></div>
+          <div id="drivingPanel" class="text-sm"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="text/javascript">
+    // 高德地图秘钥
+    window._AMapSecurityConfig = {
+      securityJsCode: 'adb42ac9bcb688f9a3e442dafd3b414d'
+    }
+  </script>
+  <script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=ebaad726f599a6c6cae2798df1ea208c&plugin=AMap.Driving,AMap.PlaceSearch,AMap.AutoComplete,AMap.Geolocation"></script>
+  <script type="text/javascript">
+    // 全局变量
+    let map, driving, startPlaceSearch, endPlaceSearch, startAutoComplete, endAutoComplete;
+    let geolocation; // 定位插件
+    let startPoint = null;
+    let endPoint = null;
+    let startMarker = null;
+    let endMarker = null;
+    let isSelectingStartPoint = false;
+    let isSelectingEndPoint = false;
+    
+    // 初始化地图
+    function initMap() {
+      map = new AMap.Map("container", {
+        resizeEnable: true,
+        center: [110.29, 25.29], // 桂林中心点坐标
+        zoom: 11 // 初始缩放级别
+      });
+      
+      // 地图加载完成事件
+      map.on('complete', function() {
+        log.success('地图加载完成');
+      });
+      
+      // 点击地图事件
+      map.on('click', function(e) {
+        if(isSelectingStartPoint) {
+          setStartPoint(e.lnglat, '地图点击位置');
+          isSelectingStartPoint = false;
+          updateMapClickButtons();
+        } else if(isSelectingEndPoint) {
+          setEndPoint(e.lnglat, '地图点击位置');
+          isSelectingEndPoint = false;
+          updateMapClickButtons();
+        }
+      });
+      
+      // 初始化路径规划插件
+      driving = new AMap.Driving({
+        map: map,
+        panel: "drivingPanel"
+      });
+      
+      // 初始化POI搜索插件
+      AMap.plugin(['AMap.PlaceSearch', 'AMap.AutoComplete', 'AMap.Geolocation'], function() {
+        // 初始化起点自动完成和搜索
+        startAutoComplete = new AMap.AutoComplete({
+          input: "startPointInput",
+          city: "桂林",
+          citylimit: true
+        });
+        
+        startPlaceSearch = new AMap.PlaceSearch({
+          city: "桂林",
+          map: null
+        });
+        
+        // 初始化终点自动完成和搜索
+        endAutoComplete = new AMap.AutoComplete({
+          input: "endPointInput",
+          city: "桂林",
+          citylimit: true
+        });
+        
+        endPlaceSearch = new AMap.PlaceSearch({
+          city: "桂林",
+          map: null
+        });
+        
+        // 初始化定位插件
+        geolocation = new AMap.Geolocation({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          buttonOffset: new AMap.Pixel(10, 20),
+          zoomToAccuracy: true,
+          buttonPosition: 'RB'
+        });
+        
+        map.addControl(geolocation);
+        
+        // 监听定位成功事件
+        geolocation.on('complete', onLocationComplete);
+        
+        // 监听定位失败事件
+        geolocation.on('error', onLocationError);
+        
+        // 监听起点输入框变化
+        document.getElementById('startPointInput').addEventListener('input', function() {
+          if(this.value.trim().length > 1) {
+            startAutoComplete.search(this.value, function(status, result) {
+              if(status === 'complete' && result.info === 'OK') {
+                showStartSearchResults(result.tips);
+              }
+            });
+          } else {
+            hideStartSearchResults();
+          }
+        });
+        
+        // 监听终点输入框变化
+        document.getElementById('endPointInput').addEventListener('input', function() {
+          if(this.value.trim().length > 1) {
+            endAutoComplete.search(this.value, function(status, result) {
+              if(status === 'complete' && result.info === 'OK') {
+                showEndSearchResults(result.tips);
+              }
+            });
+          } else {
+            hideEndSearchResults();
+          }
+        });
+      });
+      
+      // 地图选点按钮事件
+      document.getElementById('useMapStartPoint').addEventListener('click', function() {
+        isSelectingStartPoint = !isSelectingStartPoint;
+        isSelectingEndPoint = false;
+        updateMapClickButtons();
+        
+        if(isSelectingStartPoint) {
+          log.info('请在地图上点击选择起点位置');
+        }
+      });
+      
+      document.getElementById('useMapEndPoint').addEventListener('click', function() {
+        isSelectingEndPoint = !isSelectingEndPoint;
+        isSelectingStartPoint = false;
+        updateMapClickButtons();
+        
+        if(isSelectingEndPoint) {
+          log.info('请在地图上点击选择终点位置');
+        }
+      });
+      
+      // 定位当前位置按钮事件
+      document.getElementById('locateCurrentBtn').addEventListener('click', function() {
+        locateCurrentPosition();
+      });
+      
+      // 重置按钮事件
+      document.getElementById('resetBtn').addEventListener('click', resetMap);
+      
+      // 路线规划按钮事件
+      document.getElementById('routeBtn').addEventListener('click', planRoute);
+      
+      // 关闭路线详情框事件
+      document.getElementById('closeRoutePanel').addEventListener('click', function() {
+        document.getElementById('routePanel').classList.add('hidden');
+      });
+    }
+    
+    // 更新地图点击按钮状态
+    function updateMapClickButtons() {
+      const startBtn = document.getElementById('useMapStartPoint');
+      const endBtn = document.getElementById('useMapEndPoint');
+      
+      if(isSelectingStartPoint) {
+        startBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        startBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+        startBtn.innerHTML = '<i class="fa fa-check mr-1"></i>正在选起点...';
+        
+        endBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        endBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        endBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+      } else if(isSelectingEndPoint) {
+        endBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        endBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+        endBtn.innerHTML = '<i class="fa fa-check mr-1"></i>正在选终点...';
+        
+        startBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        startBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        startBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+      } else {
+        startBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        startBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        startBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+        
+        endBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        endBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        endBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+      }
+    }
+    
+    // 定位当前位置
+    function locateCurrentPosition() {
+      document.getElementById('locateCurrentBtn').disabled = true;
+      document.getElementById('locateCurrentBtn').innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i>定位中...';
+      
+      // 触发定位
+      geolocation.getCurrentPosition();
+    }
+    
+    // 定位成功回调
+    function onLocationComplete(data) {
+      document.getElementById('locateCurrentBtn').disabled = false;
+      document.getElementById('locateCurrentBtn').innerHTML = '<i class="fa fa-location-arrow mr-1"></i>定位当前';
+      
+      if(data && data.position) {
+        setStartPoint(data.position, '当前位置');
+        log.success('定位成功，已设置为起点');
+      } else {
+        log.error('定位成功但未获取到位置信息');
+      }
+    }
+    
+    // 定位失败回调
+    function onLocationError(data) {
+      document.getElementById('locateCurrentBtn').disabled = false;
+      document.getElementById('locateCurrentBtn').innerHTML = '<i class="fa fa-location-arrow mr-1"></i>定位当前';
+      
+      log.error('定位失败: ' + (data || '未知错误'));
+    }
+    
+    // 设置起点
+    function setStartPoint(lnglat, name) {
+      startPoint = lnglat;
+      
+      // 更新起点信息
+      document.getElementById('startPointInfo').textContent = `起点: ${name} (${lnglat.getLng().toFixed(6)}, ${lnglat.getLat().toFixed(6)})`;
+      
+      // 清除起点输入框
+      document.getElementById('startPointInput').value = '';
+      hideStartSearchResults();
+      
+      // 移除旧的起点标记
+      if(startMarker) {
+        map.remove(startMarker);
+      }
+      
+      // 添加新的起点标记
+      startMarker = new AMap.Marker({
+        position: lnglat,
+        icon: "https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png",
+        title: name
+      });
+      startMarker.setMap(map);
+      
+      // 检查是否可以启用路线规划按钮
+      checkRouteButton();
+    }
+    
+    // 设置终点
+    function setEndPoint(lnglat, name) {
+      endPoint = lnglat;
+      
+      // 更新终点信息
+      document.getElementById('endPointInfo').textContent = `终点: ${name} (${lnglat.getLng().toFixed(6)}, ${lnglat.getLat().toFixed(6)})`;
+      
+      // 清除终点输入框
+      document.getElementById('endPointInput').value = '';
+      hideEndSearchResults();
+      
+      // 移除旧的终点标记
+      if(endMarker) {
+        map.remove(endMarker);
+      }
+      
+      // 添加新的终点标记
+      endMarker = new AMap.Marker({
+        position: lnglat,
+        icon: "https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png",
+        title: name
+      });
+      endMarker.setMap(map);
+      
+      // 检查是否可以启用路线规划按钮
+      checkRouteButton();
+    }
+    
+    // 显示起点搜索结果
+    function showStartSearchResults(tips) {
+      const resultsContainer = document.getElementById('startSearchResults');
+      resultsContainer.innerHTML = '';
+      
+      if(tips && tips.length > 0) {
+        tips.forEach(tip => {
+          const item = document.createElement('div');
+          item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+          item.textContent = tip.name;
+          item.addEventListener('click', function() {
+            document.getElementById('startPointInput').value = tip.name;
+            searchStartPOI(tip.name, tip.adcode);
+          });
+          resultsContainer.appendChild(item);
+        });
+        resultsContainer.classList.remove('hidden');
+      } else {
+        hideStartSearchResults();
+      }
+    }
+    
+    // 隐藏起点搜索结果
+    function hideStartSearchResults() {
+      document.getElementById('startSearchResults').classList.add('hidden');
+    }
+    
+    // 显示终点搜索结果
+    function showEndSearchResults(tips) {
+      const resultsContainer = document.getElementById('endSearchResults');
+      resultsContainer.innerHTML = '';
+      
+      if(tips && tips.length > 0) {
+        tips.forEach(tip => {
+          const item = document.createElement('div');
+          item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+          item.textContent = tip.name;
+          item.addEventListener('click', function() {
+            document.getElementById('endPointInput').value = tip.name;
+            searchEndPOI(tip.name, tip.adcode);
+          });
+          resultsContainer.appendChild(item);
+        });
+        resultsContainer.classList.remove('hidden');
+      } else {
+        hideEndSearchResults();
+      }
+    }
+    
+    // 隐藏终点搜索结果
+    function hideEndSearchResults() {
+      document.getElementById('endSearchResults').classList.add('hidden');
+    }
+    
+    // 搜索起点POI
+    function searchStartPOI(keyword, adcode) {
+      startPlaceSearch.setCity(adcode || "450300");
+      startPlaceSearch.search(keyword, function(status, result) {
+        if(status === 'complete' && result.info === 'OK') {
+          if(result.poiList.pois.length > 0) {
+            const poi = result.poiList.pois[0];
+            setStartPoint(poi.location, poi.name);
+            hideStartSearchResults();
+          } else {
+            log.error('未找到相关起点，请重新输入');
+          }
+        } else {
+          log.error('起点搜索失败，请重试');
+        }
+      });
+    }
+    
+    // 搜索终点POI
+    function searchEndPOI(keyword, adcode) {
+      endPlaceSearch.setCity(adcode || "450300");
+      endPlaceSearch.search(keyword, function(status, result) {
+        if(status === 'complete' && result.info === 'OK') {
+          if(result.poiList.pois.length > 0) {
+            const poi = result.poiList.pois[0];
+            setEndPoint(poi.location, poi.name);
+            hideEndSearchResults();
+          } else {
+            log.error('未找到相关终点，请重新输入');
+          }
+        } else {
+          log.error('终点搜索失败，请重试');
+        }
+      });
+    }
+    
+    // 检查是否可以启用路线规划按钮
+    function checkRouteButton() {
+      const routeBtn = document.getElementById('routeBtn');
+      if(startPoint && endPoint) {
+        routeBtn.disabled = false;
+        routeBtn.classList.remove('bg-gray-400', 'hover:bg-gray-500', 'cursor-not-allowed');
+        routeBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'cursor-pointer');
+      } else {
+        routeBtn.disabled = true;
+        routeBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'cursor-pointer');
+        routeBtn.classList.add('bg-gray-400', 'hover:bg-gray-500', 'cursor-not-allowed');
+      }
+    }
+    
+    // 规划路线
+    function planRoute() {
+      if(!startPoint || !endPoint) {
+        log.error('请先设置起点和终点');
+        return;
+      }
+      
+      // 显示路线面板
+      document.getElementById('routePanel').classList.remove('hidden');
+      
+      // 规划驾车路线
+      driving.search(startPoint, endPoint, function(status, result) {
+        if(status === 'complete') {
+          log.success('路线规划完成');
+          
+          // 显示路线信息（已移除预计时间）
+          if(result.routes && result.routes.length > 0) {
+            const route = result.routes[0];
+            const routeInfo = document.getElementById('routeInfo');
+            routeInfo.innerHTML = `
+              <div class="flex justify-between mb-1">
+                <span>总距离: ${(route.distance/1000).toFixed(1)} 公里</span>
+              </div>
+            `;
+          }
+          
+          // 调整地图视野以显示完整路线
+          map.setFitView();
+        } else {
+          log.error('路线规划失败: ' + result);
+        }
+      });
+    }
+    
+    // 重置地图
+    function resetMap() {
+      // 清除起点和终点
+      startPoint = null;
+      endPoint = null;
+      
+      // 清除标记
+      if(startMarker) {
+        map.remove(startMarker);
+        startMarker = null;
+      }
+      
+      if(endMarker) {
+        map.remove(endMarker);
+        endMarker = null;
+      }
+      
+      // 清空输入框和信息
+      document.getElementById('startPointInput').value = '';
+      document.getElementById('startPointInfo').textContent = '';
+      document.getElementById('endPointInput').value = '';
+      document.getElementById('endPointInfo').textContent = '';
+      
+      // 隐藏搜索结果
+      hideStartSearchResults();
+      hideEndSearchResults();
+      
+      // 隐藏路线面板
+      document.getElementById('routePanel').classList.add('hidden');
+      
+      // 重置地图选点状态
+      isSelectingStartPoint = false;
+      isSelectingEndPoint = false;
+      updateMapClickButtons();
+      
+      // 禁用路线按钮
+      checkRouteButton();
+      
+      // 重置地图视野
+      map.setCenter([110.29, 25.29]);
+      map.setZoom(11);
+    }
+    
+    // 页面加载完成后初始化地图
+    window.onload = initMap;
+  </script>
+</body>
+</html>

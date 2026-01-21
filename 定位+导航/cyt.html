@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>桂林旅游助手</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <!-- 引入高德地图 JS API -->
+  <script src="https://webapi.amap.com/maps?v=2.0&key=c611a8b48f16703b74c4237858629b92&plugin=AMap.PlaceSearch,AMap.Geolocation,AMap.AutoComplete,AMap.Driving"></script>
+  
+  <!-- Tailwind配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#165DFF',
+            secondary: '#FF7D00',
+            accent: '#36D399',
+            dark: '#1E293B',
+            light: '#F8FAFC'
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <!-- 自定义工具类 -->
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .backdrop-blur {
+        backdrop-filter: blur(8px);
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans text-dark">
+  <!-- 登录页面 -->
+  <div id="login-page" class="fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center" style="background-image: url('https://picsum.photos/id/1036/1920/1080');">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative w-full max-w-md p-8 bg-white/90 backdrop-blur rounded-2xl shadow-2xl">
+      <div class="text-center mb-8">
+        <h2 class="text-[clamp(1.8rem,5vw,2.5rem)] font-bold text-primary mb-2">桂林旅游助手</h2>
+        <p class="text-gray-600">探索桂林美景，感受山水之韵</p>
+      </div>
+      
+      <form id="login-form" class="space-y-6">
+        <div>
+          <label for="username" class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+              <i class="fa fa-user"></i>
+            </span>
+            <input type="text" id="username" name="username" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" placeholder="请输入用户名" required>
+          </div>
+        </div>
+        
+        <div>
+          <label for="password" class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+              <i class="fa fa-lock"></i>
+            </span>
+            <input type="password" id="password" name="password" class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" placeholder="请输入密码" required>
+          </div>
+        </div>
+        
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <input id="remember-me" name="remember-me" type="checkbox" class="h-4 w-4 text-primary focus:ring-primary/50 border-gray-300 rounded">
+            <label for="remember-me" class="ml-2 block text-sm text-gray-700">记住我</label>
+          </div>
+          <div class="text-sm">
+            <a href="#" class="font-medium text-primary hover:text-primary/80">忘记密码?</a>
+          </div>
+        </div>
+        
+        <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 px-4 rounded-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg flex items-center justify-center">
+          <span>登录</span>
+          <i class="fa fa-arrow-right ml-2"></i>
+        </button>
+      </form>
+      
+      <div class="mt-8 text-center">
+        <p class="text-sm text-gray-600">
+          还没有账号? <a href="#" class="font-medium text-primary hover:text-primary/80">立即注册</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主应用 -->
+  <div id="app" class="hidden min-h-screen flex flex-col">
+    <!-- 顶部导航栏 -->
+    <header class="bg-primary text-white shadow-md z-10">
+      <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center">
+          <i class="fa fa-map-marker text-2xl mr-2"></i>
+          <h1 class="text-xl font-bold">桂林旅游助手</h1>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+          <button id="location-btn" class="flex items-center text-white/90 hover:text-white transition-colors">
+            <i class="fa fa-location-arrow mr-1"></i>
+            <span id="current-location" class="text-sm hidden sm:inline">定位中...</span>
+          </button>
+          
+          <div class="relative">
+            <button id="user-menu-btn" class="flex items-center">
+              <img src="https://picsum.photos/id/64/200/200" alt="用户头像" class="h-8 w-8 rounded-full object-cover border-2 border-white/50">
+              <i class="fa fa-angle-down ml-1"></i>
+            </button>
+            
+            <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-1 z-20">
+              <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                <i class="fa fa-user-circle mr-2"></i>个人资料
+              </a>
+              <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                <i class="fa fa-heart mr-2"></i>我的收藏
+              </a>
+              <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                <i class="fa fa-cog mr-2"></i>设置
+              </a>
+              <div class="border-t border-gray-100 my-1"></div>
+              <a href="#" id="logout-btn" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
+                <i class="fa fa-sign-out mr-2"></i>退出登录
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="flex-1 container mx-auto px-4 py-6">
+      <!-- 欢迎信息 -->
+      <div class="mb-8">
+        <h2 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-dark">你好，<span id="welcome-user">游客</span>！</h2>
+        <p class="text-gray-600">发现桂林的美景、美食和舒适住宿</p>
+      </div>
+
+      <!-- 搜索栏 -->
+      <div class="relative mb-8">
+        <input type="text" id="search-input" class="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all shadow-sm" placeholder="搜索景点、餐厅或酒店...">
+        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-500">
+          <i class="fa fa-search text-lg"></i>
+        </span>
+      </div>
+
+      <!-- 分类导航 -->
+      <div class="mb-8 overflow-x-auto scrollbar-hide">
+        <div class="flex space-x-4 pb-2">
+          <button class="category-btn bg-primary text-white px-4 py-2 rounded-full text-sm font-medium flex items-center whitespace-nowrap transition-all hover:shadow-md">
+            <i class="fa fa-map-marker mr-2"></i>全部
+          </button>
+          <button class="category-btn bg-white text-gray-700 px-4 py-2 rounded-full text-sm font-medium flex items-center whitespace-nowrap transition-all hover:shadow-md hover:bg-gray-50">
+            <i class="fa fa-tree mr-2"></i>景点
+          </button>
+          <button class="category-btn bg-white text-gray-700 px-4 py-2 rounded-full text-sm font-medium flex items-center whitespace-nowrap transition-all hover:shadow-md hover:bg-gray-50">
+            <i class="fa fa-cutlery mr-2"></i>美食
+          </button>
+          <button class="category-btn bg-white text-gray-700 px-4 py-2 rounded-full text-sm font-medium flex items-center whitespace-nowrap transition-all hover:shadow-md hover:bg-gray-50">
+            <i class="fa fa-bed mr-2"></i>酒店
+          </button>
+          <button class="category-btn bg-white text-gray-700 px-4 py-2 rounded-full text-sm font-medium flex items-center whitespace-nowrap transition-all hover:shadow-md hover:bg-gray-50">
+            <i class="fa fa-shopping-bag mr-2"></i>购物
+          </button>
+          <button class="category-btn bg-white text-gray-700 px-4 py-2 rounded-full text-sm font-medium flex items-center whitespace-nowrap transition-all hover:shadow-md hover:bg-gray-50">
+            <i class="fa fa-info-circle mr-2"></i>攻略
+          </button>
+        </div>
+      </div>
+
+      <!-- 推荐内容 -->
+      <section class="mb-8">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-xl font-bold text-dark">为你推荐</h3>
+          <a href="#" class="text-primary text-sm font-medium hover:underline">查看更多</a>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- 推荐项1 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <div class="relative">
+              <img src="https://picsum.photos/id/1036/600/400" alt="漓江风景" class="w-full h-48 object-cover">
+              <div class="absolute top-3 right-3 bg-white/90 backdrop-blur rounded-full px-2 py-1 text-xs font-medium text-primary">
+                <i class="fa fa-star mr-1"></i>4.8
+              </div>
+              <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                <span class="text-white text-xs font-medium px-2 py-1 rounded-full bg-primary/80">景点</span>
+              </div>
+            </div>
+            <div class="p-4">
+              <h4 class="font-bold text-lg mb-1">漓江风景区</h4>
+              <p class="text-gray-600 text-sm mb-3 line-clamp-2">漓江是中国锦绣河山的一颗明珠，是桂林风光的精华。</p>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center text-gray-500 text-sm">
+                  <i class="fa fa-map-marker mr-1"></i>
+                  <span>距离1.2公里</span>
+                </div>
+                <button class="text-primary hover:text-primary/80 transition-colors">
+                  <i class="fa fa-heart-o"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 推荐项2 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <div class="relative">
+              <img src="https://picsum.photos/id/292/600/400" alt="桂林米粉" class="w-full h-48 object-cover">
+              <div class="absolute top-3 right-3 bg-white/90 backdrop-blur rounded-full px-2 py-1 text-xs font-medium text-primary">
+                <i class="fa fa-star mr-1"></i>4.6
+              </div>
+              <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                <span class="text-white text-xs font-medium px-2 py-1 rounded-full bg-secondary/80">美食</span>
+              </div>
+            </div>
+            <div class="p-4">
+              <h4 class="font-bold text-lg mb-1">老东江米粉</h4>
+              <p class="text-gray-600 text-sm mb-3 line-clamp-2">桂林米粉是广西桂林地区历史悠久的特色传统名小吃。</p>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center text-gray-500 text-sm">
+                  <i class="fa fa-map-marker mr-1"></i>
+                  <span>距离0.8公里</span>
+                </div>
+                <button class="text-primary hover:text-primary/80 transition-colors">
+                  <i class="fa fa-heart-o"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 推荐项3 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <div class="relative">
+              <img src="https://picsum.photos/id/1040/600/400" alt="桂林香格里拉大酒店" class="w-full h-48 object-cover">
+              <div class="absolute top-3 right-3 bg-white/90 backdrop-blur rounded-full px-2 py-1 text-xs font-medium text-primary">
+                <i class="fa fa-star mr-1"></i>4.9
+              </div>
+              <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                <span class="text-white text-xs font-medium px-2 py-1 rounded-full bg-accent/80">酒店</span>
+              </div>
+            </div>
+            <div class="p-4">
+              <h4 class="font-bold text-lg mb-1">桂林香格里拉大酒店</h4>
+              <p class="text-gray-600 text-sm mb-3 line-clamp-2">豪华酒店，位于漓江畔，享有壮丽的山水景观。</p>
+              <div class="flex items-center justify-between">
+                <div class="flex items-center text-gray-500 text-sm">
+                  <i class="fa fa-map-marker mr-1"></i>
+                  <span>距离2.5公里</span>
+                </div>
+                <button class="text-primary hover:text-primary/80 transition-colors">
+                  <i class="fa fa-heart-o"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 热门景点 -->
+      <section class="mb-8">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-xl font-bold text-dark">热门景点</h3>
+          <a href="#" class="text-primary text-sm font-medium hover:underline">查看更多</a>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <!-- 热门景点1 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex">
+            <img src="https://picsum.photos/id/164/300/200" alt="象鼻山" class="w-1/3 object-cover">
+            <div class="p-4 flex-1">
+              <div class="flex justify-between items-start mb-1">
+                <h4 class="font-bold text-base">象鼻山</h4>
+                <div class="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+                  <i class="fa fa-star mr-1"></i>4.7
+                </div>
+              </div>
+              <p class="text-gray-600 text-xs mb-2 line-clamp-2">因山形酷似一头伸着鼻子汲饮漓水的巨象而得名，是桂林的城徽。</p>
+              <div class="flex items-center text-gray-500 text-xs">
+                <i class="fa fa-map-marker mr-1"></i>
+                <span>距离1.5公里</span>
+                <span class="mx-2">•</span>
+                <span class="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">免费</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 热门景点2 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex">
+            <img src="https://picsum.photos/id/15/300/200" alt="七星公园" class="w-1/3 object-cover">
+            <div class="p-4 flex-1">
+              <div class="flex justify-between items-start mb-1">
+                <h4 class="font-bold text-base">七星公园</h4>
+                <div class="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+                  <i class="fa fa-star mr-1"></i>4.5
+                </div>
+              </div>
+              <p class="text-gray-600 text-xs mb-2 line-clamp-2">桂林最大的综合性公园，因七星山而得名，是桂林山水精华的缩影。</p>
+              <div class="flex items-center text-gray-500 text-xs">
+                <i class="fa fa-map-marker mr-1"></i>
+                <span>距离2.3公里</span>
+                <span class="mx-2">•</span>
+                <span class="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">¥75/人</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 热门景点3 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex">
+            <img src="https://picsum.photos/id/129/300/200" alt="龙脊梯田" class="w-1/3 object-cover">
+            <div class="p-4 flex-1">
+              <div class="flex justify-between items-start mb-1">
+                <h4 class="font-bold text-base">龙脊梯田</h4>
+                <div class="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+                  <i class="fa fa-star mr-1"></i>4.8
+                </div>
+              </div>
+              <p class="text-gray-600 text-xs mb-2 line-clamp-2">世界杰出的稻作文化景观，被誉为"世界梯田之冠"。</p>
+              <div class="flex items-center text-gray-500 text-xs">
+                <i class="fa fa-map-marker mr-1"></i>
+                <span>距离80公里</span>
+                <span class="mx-2">•</span>
+                <span class="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">¥80/人</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 热门景点4 -->
+          <div class="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex">
+            <img src="https://picsum.photos/id/137/300/200" alt="银子岩" class="w-1/3 object-cover">
+            <div class="p-4 flex-1">
+              <div class="flex justify-between items-start mb-1">
+                <h4 class="font-bold text-base">银子岩</h4>
+                <div class="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+                  <i class="fa fa-star mr-1"></i>4.6
+                </div>
+              </div>
+              <p class="text-gray-600 text-xs mb-2 line-clamp-2">桂林最大的岩洞，洞内钟乳石宛如银河，闪烁出银子般的光芒。</p>
+              <div class="flex items-center text-gray-500 text-xs">
+                <i class="fa fa-map-marker mr-1"></i>
+                <span>距离60公里</span>
+                <span class="mx-2">•</span>
+                <span class="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">¥85/人</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 推荐路线 -->
+      <section>
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-xl font-bold text-dark">推荐路线</h3>
+          <a href="#" class="text-primary text-sm font-medium hover:underline">查看更多</a>
+        </div>
+        
+        <div class="relative overflow-x-auto scrollbar-hide">
+          <div class="flex space-x-4 pb-4">
+            <!-- 路线1 -->
+            <div class="w-72 bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col">
+              <div class="relative">
+                <img src="https://picsum.photos/id/1019/600/400" alt="桂林经典一日游" class="w-full h-40 object-cover">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent p-4 flex flex-col justify-end">
+                  <h4 class="text-white font-bold">桂林经典一日游</h4>
+                  <p class="text-white/80 text-sm">象鼻山 - 七星公园 - 两江四湖</p>
+                </div>
+              </div>
+              <div class="p-3 flex-1 flex flex-col">
+                <div class="flex items-center text-sm text-gray-600 mb-2">
+                  <i class="fa fa-clock-o mr-1"></i>
+                  <span>约8小时</span>
+                </div>
+                <div class="flex items-center text-sm text-gray-600 mb-3">
+                  <i class="fa fa-map-signs mr-1"></i>
+                  <span>3个景点</span>
+                </div>
+                <div class="mt-auto">
+                  <button class="w-full bg-primary/10 text-primary py-2 rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors">
+                    查看详情
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 路线2 -->
+            <div class="w-72 bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col">
+              <div class="relative">
+                <img src="https://picsum.photos/id/1015/600/400" alt="漓江精华游" class="w-full h-40 object-cover">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent p-4 flex flex-col justify-end">
+                  <h4 class="text-white font-bold">漓江精华游</h4>
+                  <p class="text-white/80 text-sm">杨堤 - 九马画山 - 兴坪古镇</p>
+                </div>
+              </div>
+              <div class="p-3 flex-1 flex flex-col">
+                <div class="flex items-center text-sm text-gray-600 mb-2">
+                  <i class="fa fa-clock-o mr-1"></i>
+                  <span>约6小时</span>
+                </div>
+                <div class="flex items-center text-sm text-gray-600 mb-3">
+                  <i class="fa fa-map-signs mr-1"></i>
+                  <span>3个景点</span>
+                </div>
+                <div class="mt-auto">
+                  <button class="w-full bg-primary/10 text-primary py-2 rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors">
+                    查看详情
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 路线3 -->
+            <div class="w-72 bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 flex flex-col">
+              <div class="relative">
+                <img src="https://picsum.photos/id/1029/600/400" alt="龙脊梯田一日游" class="w-full h-40 object-cover">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent p-4 flex flex-col justify-end">
+                  <h4 class="text-white font-bold">龙脊梯田一日游</h4>
+                  <p class="text-white/80 text-sm">平安寨 - 七星伴月 - 九龙五虎</p>
+                </div>
+              </div>
+              <div class="p-3 flex-1 flex flex-col">
+                <div class="flex items-center text-sm text-gray-600 mb-2">
+                  <i class="fa fa-clock-o mr-1"></i>
+                  <span>约10小时</span>
+                </div>
+                <div class="flex items-center text-sm text-gray-600 mb-3">
+                  <i class="fa fa-map-signs mr-1"></i>
+                  <span>3个景点</span>
+                </div>
+                <div class="mt-auto">
+                  <button class="w-full bg-primary/10 text-primary py-2 rounded-lg text-sm font-medium hover:bg-primary/20 transition-colors">
+                    查看详情
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    
+    <!-- 地图页面 -->
+ <div id="map-page" class="hidden min-h-screen">
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto { content-visibility: auto; }
+      .search-results { max-height: 200px; overflow-y: auto; }
+      .route-panel { position: absolute; top: 10px; right: 10px; width: 50%; max-width: 300px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; overflow: hidden; }
+      .map-container { position: relative; width: 100%; height: 100%; }
+    }
+  </style>
+  <main class="flex-1 container mx-auto px-4 py-4 flex flex-col md:flex-row gap-4">
+    <!-- 左侧搜索区域 -->
+    <div class="w-full md:w-1/3 bg-white rounded-lg shadow-md p-4">
+      <h2 class="text-lg font-semibold mb-4 text-gray-700">路线规划</h2>
+      <!-- 起点设置 -->
+      <div class="mb-4">
+        <h3 class="text-md font-medium mb-2 text-gray-700 flex items-center">
+          <i class="fa fa-map-marker text-green-500 mr-2"></i>起点
+        </h3>
+        <div class="flex flex-col space-y-2">
+          <div class="flex space-x-2">
+            <button id="useMapStartPoint" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm transition flex items-center flex-1">
+              <i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点
+            </button>
+            <button id="locateCurrentBtn" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded text-sm transition flex items-center">
+              <i class="fa fa-location-arrow mr-1"></i>定位当前
+            </button>
+          </div>
+          <div class="relative">
+            <input type="text" id="startPointInput" class="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入起点名称">
+            <div id="startSearchResults" class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg search-results hidden"></div>
+          </div>
+          <div id="startPointInfo" class="text-sm text-gray-500"></div>
+        </div>
+      </div>
+      <!-- 终点设置 -->
+      <div class="mb-4">
+        <h3 class="text-md font-medium mb-2 text-gray-700 flex items-center">
+          <i class="fa fa-flag text-red-500 mr-2"></i>终点
+        </h3>
+        <div class="flex flex-col space-y-2">
+          <button id="useMapEndPoint" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm transition flex items-center">
+            <i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点
+          </button>
+          <div class="relative">
+            <input type="text" id="endPointInput" class="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入终点名称">
+            <div id="endSearchResults" class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg search-results hidden"></div>
+          </div>
+          <div id="endPointInfo" class="text-sm text-gray-500"></div>
+        </div>
+      </div>
+      <!-- 路线规划按钮 -->
+      <button id="routeBtn" disabled class="w-full bg-gray-400 hover:bg-gray-500 text-white px-6 py-2 rounded-md text-base font-medium transition cursor-not-allowed">
+        <i class="fa fa-road mr-2"></i>规划路线
+      </button>
+    </div>
+    <!-- 右侧地图区域 -->
+    <div class="w-full md:w-2/3 bg-white rounded-lg shadow-md overflow-hidden relative">
+      <div id="container" class="map-container w-full h-full"></div>
+      <!-- 路线详情框 - 调整到地图右上角 -->
+      <div id="routePanel" class="route-panel hidden">
+        <div class="p-3 bg-blue-500 text-white flex justify-between items-center">
+          <h3 class="text-md font-medium flex items-center">
+            <i class="fa fa-directions mr-2"></i>路线详情
+          </h3>
+          <button id="closeRoutePanel" class="text-white hover:text-gray-200">
+            <i class="fa fa-times"></i>
+          </button>
+        </div>
+        <div class="p-3">
+          <div id="routeInfo" class="text-sm text-gray-600 mb-2"></div>
+          <div id="drivingPanel" class="text-sm"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script type="text/javascript">
+    window._AMapSecurityConfig = { securityJsCode: 'adb42ac9bcb688f9a3e442dafd3b414d' };
+  </script>
+  <script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=ebaad726f599a6c6cae2798df1ea208c&plugin=AMap.Driving,AMap.PlaceSearch,AMap.AutoComplete,AMap.Geolocation"></script>
+  <script type="text/javascript">
+    let map, driving, startPlaceSearch, endPlaceSearch, startAutoComplete, endAutoComplete;
+    let geolocation;
+    let startPoint = null;
+    let endPoint = null;
+    let startMarker = null;
+    let endMarker = null;
+    let isSelectingStartPoint = false;
+    let isSelectingEndPoint = false;
+    function initMap() {
+      map = new AMap.Map("container", { resizeEnable: true, center: [110.29, 25.29], zoom: 11 });
+      map.on('click', function(e) {
+        if(isSelectingStartPoint) {
+          setStartPoint(e.lnglat, '地图点击位置');
+          isSelectingStartPoint = false;
+          updateMapClickButtons();
+        } else if(isSelectingEndPoint) {
+          setEndPoint(e.lnglat, '地图点击位置');
+          isSelectingEndPoint = false;
+          updateMapClickButtons();
+        }
+      });
+      driving = new AMap.Driving({ map: map, panel: "drivingPanel" });
+      AMap.plugin(['AMap.PlaceSearch', 'AMap.AutoComplete', 'AMap.Geolocation'], function() {
+        startAutoComplete = new AMap.AutoComplete({ input: "startPointInput", city: "桂林", citylimit: true });
+        startPlaceSearch = new AMap.PlaceSearch({ city: "桂林", map: null });
+        endAutoComplete = new AMap.AutoComplete({ input: "endPointInput", city: "桂林", citylimit: true });
+        endPlaceSearch = new AMap.PlaceSearch({ city: "桂林", map: null });
+        geolocation = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000, buttonOffset: new AMap.Pixel(10, 20), zoomToAccuracy: true, buttonPosition: 'RB' });
+        map.addControl(geolocation);
+        geolocation.on('complete', onLocationComplete);
+        geolocation.on('error', onLocationError);
+        document.getElementById('startPointInput').addEventListener('input', function() {
+          if(this.value.trim().length > 1) {
+            startAutoComplete.search(this.value, function(status, result) {
+              if(status === 'complete' && result.info === 'OK') {
+                showStartSearchResults(result.tips);
+              }
+            });
+          } else {
+            hideStartSearchResults();
+          }
+        });
+        document.getElementById('endPointInput').addEventListener('input', function() {
+          if(this.value.trim().length > 1) {
+            endAutoComplete.search(this.value, function(status, result) {
+              if(status === 'complete' && result.info === 'OK') {
+                showEndSearchResults(result.tips);
+              }
+            });
+          } else {
+            hideEndSearchResults();
+          }
+        });
+      });
+      document.getElementById('useMapStartPoint').addEventListener('click', function() {
+        isSelectingStartPoint = !isSelectingStartPoint;
+        isSelectingEndPoint = false;
+        updateMapClickButtons();
+      });
+      document.getElementById('useMapEndPoint').addEventListener('click', function() {
+        isSelectingEndPoint = !isSelectingEndPoint;
+        isSelectingStartPoint = false;
+        updateMapClickButtons();
+      });
+      document.getElementById('locateCurrentBtn').addEventListener('click', function() {
+        locateCurrentPosition();
+      });
+      document.getElementById('resetBtn') && document.getElementById('resetBtn').addEventListener('click', resetMap);
+      document.getElementById('routeBtn').addEventListener('click', planRoute);
+      document.getElementById('closeRoutePanel').addEventListener('click', function() {
+        document.getElementById('routePanel').classList.add('hidden');
+      });
+    }
+    function updateMapClickButtons() {
+      const startBtn = document.getElementById('useMapStartPoint');
+      const endBtn = document.getElementById('useMapEndPoint');
+      if(isSelectingStartPoint) {
+        startBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        startBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+        startBtn.innerHTML = '<i class="fa fa-check mr-1"></i>正在选起点...';
+        endBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        endBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        endBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+      } else if(isSelectingEndPoint) {
+        endBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        endBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+        endBtn.innerHTML = '<i class="fa fa-check mr-1"></i>正在选终点...';
+        startBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        startBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        startBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+      } else {
+        startBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        startBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        startBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+        endBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+        endBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        endBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+      }
+    }
+    function locateCurrentPosition() {
+      document.getElementById('locateCurrentBtn').disabled = true;
+      document.getElementById('locateCurrentBtn').innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i>定位中...';
+      geolocation.getCurrentPosition();
+    }
+    function onLocationComplete(data) {
+      document.getElementById('locateCurrentBtn').disabled = false;
+      document.getElementById('locateCurrentBtn').innerHTML = '<i class="fa fa-location-arrow mr-1"></i>定位当前';
+      if(data && data.position) {
+        setStartPoint(data.position, '当前位置');
+      }
+    }
+    function onLocationError(data) {
+      document.getElementById('locateCurrentBtn').disabled = false;
+      document.getElementById('locateCurrentBtn').innerHTML = '<i class="fa fa-location-arrow mr-1"></i>定位当前';
+    }
+    function setStartPoint(lnglat, name) {
+      startPoint = lnglat;
+      document.getElementById('startPointInfo').textContent = `起点: ${name} (${lnglat.getLng().toFixed(6)}, ${lnglat.getLat().toFixed(6)})`;
+      document.getElementById('startPointInput').value = '';
+      hideStartSearchResults();
+      if(startMarker) { map.remove(startMarker); }
+      startMarker = new AMap.Marker({ position: lnglat, icon: "https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png", title: name });
+      startMarker.setMap(map);
+      checkRouteButton();
+    }
+    function setEndPoint(lnglat, name) {
+      endPoint = lnglat;
+      document.getElementById('endPointInfo').textContent = `终点: ${name} (${lnglat.getLng().toFixed(6)}, ${lnglat.getLat().toFixed(6)})`;
+      document.getElementById('endPointInput').value = '';
+      hideEndSearchResults();
+      if(endMarker) { map.remove(endMarker); }
+      endMarker = new AMap.Marker({ position: lnglat, icon: "https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png", title: name });
+      endMarker.setMap(map);
+      checkRouteButton();
+    }
+    function showStartSearchResults(tips) {
+      const resultsContainer = document.getElementById('startSearchResults');
+      resultsContainer.innerHTML = '';
+      if(tips && tips.length > 0) {
+        tips.forEach(tip => {
+          const item = document.createElement('div');
+          item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+          item.textContent = tip.name;
+          item.addEventListener('click', function() {
+            document.getElementById('startPointInput').value = tip.name;
+            searchStartPOI(tip.name, tip.adcode);
+          });
+          resultsContainer.appendChild(item);
+        });
+        resultsContainer.classList.remove('hidden');
+      } else {
+        hideStartSearchResults();
+      }
+    }
+    function hideStartSearchResults() {
+      document.getElementById('startSearchResults').classList.add('hidden');
+    }
+    function showEndSearchResults(tips) {
+      const resultsContainer = document.getElementById('endSearchResults');
+      resultsContainer.innerHTML = '';
+      if(tips && tips.length > 0) {
+        tips.forEach(tip => {
+          const item = document.createElement('div');
+          item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+          item.textContent = tip.name;
+          item.addEventListener('click', function() {
+            document.getElementById('endPointInput').value = tip.name;
+            searchEndPOI(tip.name, tip.adcode);
+          });
+          resultsContainer.appendChild(item);
+        });
+        resultsContainer.classList.remove('hidden');
+      } else {
+        hideEndSearchResults();
+      }
+    }
+    function hideEndSearchResults() {
+      document.getElementById('endSearchResults').classList.add('hidden');
+    }
+    function searchStartPOI(keyword, adcode) {
+      startPlaceSearch.setCity(adcode || "450300");
+      startPlaceSearch.search(keyword, function(status, result) {
+        if(status === 'complete' && result.info === 'OK') {
+          if(result.poiList.pois.length > 0) {
+            const poi = result.poiList.pois[0];
+            setStartPoint(poi.location, poi.name);
+            hideStartSearchResults();
+          }
+        }
+      });
+    }
+    function searchEndPOI(keyword, adcode) {
+      endPlaceSearch.setCity(adcode || "450300");
+      endPlaceSearch.search(keyword, function(status, result) {
+        if(status === 'complete' && result.info === 'OK') {
+          if(result.poiList.pois.length > 0) {
+            const poi = result.poiList.pois[0];
+            setEndPoint(poi.location, poi.name);
+            hideEndSearchResults();
+          }
+        }
+      });
+    }
+    function checkRouteButton() {
+      const routeBtn = document.getElementById('routeBtn');
+      if(startPoint && endPoint) {
+        routeBtn.disabled = false;
+        routeBtn.classList.remove('bg-gray-400', 'hover:bg-gray-500', 'cursor-not-allowed');
+        routeBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'cursor-pointer');
+      } else {
+        routeBtn.disabled = true;
+        routeBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'cursor-pointer');
+        routeBtn.classList.add('bg-gray-400', 'hover:bg-gray-500', 'cursor-not-allowed');
+      }
+    }
+    function planRoute() {
+      if(!startPoint || !endPoint) return;
+      document.getElementById('routePanel').classList.remove('hidden');
+      driving.search(startPoint, endPoint, function(status, result) {
+        if(status === 'complete') {
+          if(result.routes && result.routes.length > 0) {
+            const route = result.routes[0];
+            const routeInfo = document.getElementById('routeInfo');
+            routeInfo.innerHTML = `<div class=\"flex justify-between mb-1\"><span>总距离: ${(route.distance/1000).toFixed(1)} 公里</span></div>`;
+          }
+          map.setFitView();
+        }
+      });
+    }
+    function resetMap() {
+      startPoint = null;
+      endPoint = null;
+      if(startMarker) { map.remove(startMarker); startMarker = null; }
+      if(endMarker) { map.remove(endMarker); endMarker = null; }
+      document.getElementById('startPointInput').value = '';
+      document.getElementById('startPointInfo').textContent = '';
+      document.getElementById('endPointInput').value = '';
+      document.getElementById('endPointInfo').textContent = '';
+      hideStartSearchResults();
+      hideEndSearchResults();
+      document.getElementById('routePanel').classList.add('hidden');
+      isSelectingStartPoint = false;
+      isSelectingEndPoint = false;
+      updateMapClickButtons();
+      checkRouteButton();
+      map.setCenter([110.29, 25.29]);
+      map.setZoom(11);
+    }
+    window.onload = initMap;
+  </script>
+ </div>
+
+    <!-- 底部导航 -->
+    <footer class="bg-white border-t border-gray-200 py-2 shadow-lg">
+      <div class="container mx-auto px-4">
+        <div class="flex justify-around">
+          <a href="#" class="flex flex-col items-center text-primary">
+            <i class="fa fa-home text-xl"></i>
+            <span class="text-xs mt-1">首页</span>
+          </a>
+          <a href="#" class="flex flex-col items-center text-gray-500 hover:text-primary transition-colors">
+            <i class="fa fa-map-o text-xl"></i>
+            <span class="text-xs mt-1">位置服务</span>
+          </a>
+          <a href="#" class="flex flex-col items-center text-gray-500 hover:text-primary transition-colors">
+            <i class="fa fa-compass text-xl"></i>
+            <span class="text-xs mt-1">发现</span>
+          </a>
+          <a href="#" class="flex flex-col items-center text-gray-500 hover:text-primary transition-colors">
+            <i class="fa fa-user-o text-xl"></i>
+            <span class="text-xs mt-1">我的</span>
+          </a>
+           
+        </div>
+      </div>
+    </footer>
+  </div>
+
+
+  <!-- 详情页模态框 -->
+  <div id="detail-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-md bg-white rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="relative">
+        <img src="https://picsum.photos/id/1036/800/500" alt="漓江风景区" class="w-full h-64 object-cover">
+        <button id="close-modal" class="absolute top-4 right-4 bg-black/30 text-white rounded-full w-8 h-8 flex items-center justify-center backdrop-blur hover:bg-black/50 transition-colors">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      
+      <div class="p-6 overflow-y-auto flex-1">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h2 class="text-2xl font-bold text-dark">漓江风景区</h2>
+            <div class="flex items-center mt-1">
+              <div class="flex text-yellow-400">
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star"></i>
+                <i class="fa fa-star-half-o"></i>
+              </div>
+              <span class="ml-2 text-gray-600">4.8 (1245条评价)</span>
+            </div>
+          </div>
+          <span class="bg-primary/10 text-primary text-xs px-3 py-1 rounded-full">景点</span>
+        </div>
+        
+        <div class="flex items-center text-gray-600 mb-6">
+          <i class="fa fa-map-marker text-primary mr-2"></i>
+          <span>广西壮族自治区桂林市灵川县</span>
+        </div>
+        
+        <div class="mb-6">
+          <h3 class="text-lg font-bold text-dark mb-2">景点介绍</h3>
+          <p class="text-gray-600 leading-relaxed">
+            漓江是中国锦绣河山的一颗明珠，是桂林风光的精华。漓江发源于"华南第一峰"桂北越城岭猫儿山，那是个林丰木秀，空气清新，生态环境极佳的地方。漓江上游主流称六峒河；南流至兴安县司门前附近，东纳黄柏江，西受川江，合流称溶江；由溶江镇汇灵渠水，流经灵川、桂林、阳朔，至平乐县恭城河口称漓江；下游统称桂江，至梧州市汇入西江，全长约437公里，流域面积约5585平方公里。
+          </p>
+        </div>
+        
+        <div class="mb-6">
+          <h3 class="text-lg font-bold text-dark mb-2">开放时间</h3>
+          <p class="text-gray-600">08:00-17:30 (全年开放)</p>
+        </div>
+        
+        <div class="mb-6">
+          <h3 class="text-lg font-bold text-dark mb-2">门票信息</h3>
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <span>成人票</span>
+              <span class="font-bold">¥215</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span>儿童票</span>
+              <span class="font-bold">¥108</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span>老人票</span>
+              <span class="font-bold">¥108</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="mb-6">
+          <h3 class="text-lg font-bold text-dark mb-2">用户评价</h3>
+          <div class="space-y-4">
+            <div class="border-b border-gray-100 pb-4">
+              <div class="flex items-center mb-2">
+                <img src="https://picsum.photos/id/64/100/100" alt="用户头像" class="w-10 h-10 rounded-full object-cover">
+                <div class="ml-3">
+                  <h4 class="font-medium text-dark">张三</h4>
+                  <div class="flex text-yellow-400 text-xs">
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                  </div>
+                </div>
+              </div>
+              <p class="text-gray-600 text-sm">
+                漓江的风景真的太美了，山水相映，如诗如画。乘坐竹筏游览，仿佛置身于仙境之中。特别是九马画山和黄布倒影，非常壮观。
+              </p>
+              <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>2025-06-15</span>
+                <div class="flex items-center">
+                  <button class="flex items-center hover:text-primary transition-colors">
+                    <i class="fa fa-thumbs-o-up mr-1"></i>
+                    <span>32</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="border-b border-gray-100 pb-4">
+              <div class="flex items-center mb-2">
+                <img src="https://picsum.photos/id/65/100/100" alt="用户头像" class="w-10 h-10 rounded-full object-cover">
+                <div class="ml-3">
+                  <h4 class="font-medium text-dark">李四</h4>
+                  <div class="flex text-yellow-400 text-xs">
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star"></i>
+                    <i class="fa fa-star-o"></i>
+                  </div>
+                </div>
+              </div>
+              <p class="text-gray-600 text-sm">
+                非常值得一去的地方，特别是在晴天的时候，山水的颜色更加鲜明。建议选择杨堤到兴坪段，这是漓江最美的一段。
+              </p>
+              <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>2025-06-10</span>
+                <div class="flex items-center">
+                  <button class="flex items-center hover:text-primary transition-colors">
+                    <i class="fa fa-thumbs-o-up mr-1"></i>
+                    <span>25</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="p-4 border-t border-gray-200 bg-white">
+        <div class="flex space-x-3">
+          <button class="flex-1 bg-primary hover:bg-primary/90 text-white font-medium py-3 px-4 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center">
+            <i class="fa fa-map-o mr-2"></i>
+            <span>导航前往</span>
+          </button>
+          <button class="w-14 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-colors flex items-center justify-center">
+            <i class="fa fa-share-alt"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ...existing code...
+    // 登录表单提交处理
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value;
+      
+      // 显示欢迎信息
+      document.getElementById('welcome-user').textContent = username || '游客';
+      
+      // 隐藏登录页面，显示主应用
+      document.getElementById('login-page').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      
+      // 模拟定位
+      setTimeout(() => {
+        document.getElementById('current-location').textContent = '桂林市';
+      }, 1500);
+    });
+    
+    // 用户菜单切换
+    document.getElementById('user-menu-btn').addEventListener('click', function() {
+      document.getElementById('user-menu').classList.toggle('hidden');
+    });
+    
+    // 点击其他区域关闭用户菜单
+    document.addEventListener('click', function(event) {
+      const userMenuBtn = document.getElementById('user-menu-btn');
+      const userMenu = document.getElementById('user-menu');
+      
+      if (!userMenuBtn.contains(event.target) && !userMenu.contains(event.target)) {
+        userMenu.classList.add('hidden');
+      }
+    });
+    
+    // 退出登录
+    document.getElementById('logout-btn').addEventListener('click', function(e) {
+      e.preventDefault();
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('login-page').classList.remove('hidden');
+      document.getElementById('user-menu').classList.add('hidden');
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+    });
+    
+    // 分类按钮切换
+    const categoryBtns = document.querySelectorAll('.category-btn');
+    categoryBtns.forEach(btn => {
+      btn.addEventListener('click', function() {
+        categoryBtns.forEach(b => {
+          b.classList.remove('bg-primary', 'text-white');
+          b.classList.add('bg-white', 'text-gray-700');
+        });
+        this.classList.remove('bg-white', 'text-gray-700');
+        this.classList.add('bg-primary', 'text-white');
+      });
+    });
+    
+    // 打开详情页
+    const items = document.querySelectorAll('.grid .bg-white.rounded-xl');
+    items.forEach(item => {
+      item.addEventListener('click', function() {
+        document.getElementById('detail-modal').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      });
+    });
+    
+    // 关闭详情页
+    document.getElementById('close-modal').addEventListener('click', function() {
+      document.getElementById('detail-modal').classList.add('hidden');
+      document.body.style.overflow = '';
+    });
+    
+    // 点击模态框背景关闭
+    document.getElementById('detail-modal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        this.classList.add('hidden');
+        document.body.style.overflow = '';
+      }
+    });
+    
+    // 模拟定位功能
+    document.getElementById('location-btn').addEventListener('click', function() {
+      const locationText = document.getElementById('current-location');
+      locationText.textContent = '定位中...';
+      
+      // 模拟定位延迟
+      setTimeout(() => {
+        locationText.textContent = '桂林市';
+      }, 1500);
+    });
+    // 底部导航切换
+    document.querySelectorAll('footer a').forEach((link, index) => {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+    
+        // 隐藏所有主内容区
+        document.querySelectorAll('#app > main, #map-page').forEach(el => {
+          el.classList.add('hidden');
+        });
+    
+        // 根据点击的导航项显示对应内容
+        if (index === 0) { // 首页
+           document.querySelector('main').classList.remove('hidden');
+        } else if (index === 1) { // 地图
+          document.getElementById('map-page').classList.remove('hidden');
+         // 确保地图已初始化
+          if (!map) {
+            initMap();
+          }
+        }
+        // 其他导航项可以继续添加...
+       });
+    });
+    // 模拟搜索功能
+    document.getElementById('search-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        alert(`搜索内容：${this.value}`);
+      }
+    });
+    
+    <script>
+/* ========== 真正的收藏/取消收藏函数 ========== */
+window.handleCollect = async function () {
+  // 1. 基本校验
+  if (!currentPoi || !currentPoi.id) {
+    alert('请先选择景点');
+    return;
+  }
+  // 2. 构造请求体
+  const body = {
+    poi_id:      currentPoi.id,
+    poi_name:    currentPoi.name,
+    poi_address: currentPoi.address || '',
+    poi_type:    currentPoi.type   || 'scenic', // 默认景点
+    lon:         currentPoi.location.lng,
+    lat:         currentPoi.location.lat
+  };
+  try {
+    // 3. 发请求
+    const resp = await fetch('/api/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const res = await resp.json();
+    if (!res.success) {          // 4. 业务异常
+      alert(res.message);
+      return;
+    }
+    // 5. 成功 => 刷新按钮文字
+    document.getElementById('collectBtn').textContent = res.favorited ? '已收藏' : '收藏';
+    alert(res.message);
+  } catch (e) {                  // 6. 网络异常
+    console.error(e);
+    alert('网络错误，请稍后再试');
+  }
+};
+</script>
+  </script>
+</body>
+</html>
+    
