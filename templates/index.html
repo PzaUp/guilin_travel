@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>桂林旅游</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#f97316',
+                        neutral: '#f3f4f6',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        // 高德地图API
+        window._AMapSecurityConfig = {
+            securityJsCode: '2d8710bfa60f0f94ab17c16544569d27'
+        }
+    </script>
+    <script src="https://webapi.amap.com/maps?v=2.0&key=08a2687854e095838cade1ffd22775ce&plugin=AMap.Driving,AMap.PlaceSearch,AMap.AutoComplete,AMap.Geolocation"></script>
+    <script src="https://a.amap.com/jsapi_demos/static/demo-center/js/demoutils.js"></script>
+    <style type="text/tailwindcss">
+        .search-results {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .route-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 50%;
+            max-width: 300px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            overflow: hidden;
+        }
+        .map-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .bg-gradient-primary {
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-hover {
+                transition: all 0.3s ease;
+            }
+            .card-hover:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            }
+            .tilt-image {
+                transform: rotate(-3deg);
+                transition: transform 0.3s ease;
+            }
+            .tilt-image:hover {
+                transform: rotate(3deg) scale(1.02);
+            }
+            .center-image {
+                transform: rotate(0deg);
+                transition: transform 0.3s ease;
+            }
+            .center-image:hover {
+                transform: scale(1.03);
+            }
+        }
+    </style>
+    <style>
+/* 手机端专用辅助类 */
+@media (max-width: 767px) {
+  .mobile-full { width: 100vw !important; max-width: 100vw !important; min-width: auto !important; }
+  .mobile-h-panel { height: 40vh !important; }
+  .mobile-text-sm { font-size: 0.8rem !important; }
+}
+/* 强制隐藏横向滚动 */
+body { overflow-x: hidden; }
+/* 轮播图手机高度 */
+@media (max-width: 767px) {
+  #scenicCarousel { height: calc(100dvh - 64px) !important; min-height: 480px; }
+}
+/* 路线详情弹窗手机宽度 */
+#guideRoutePanel { max-width: 90vw !important; }
+</style>
+</head>
+<body class="bg-gradient-to-br from-blue-200 via-blue-100 to-pink-100 min-h-screen font-sans">
+    <script>
+        let guidePOIInited = false;   // 必看推荐地图
+        let locationMapInited = false;  // 位置服务大地图
+        let locationMap = null;  // 全局地图对象
+    </script>
+    <!-- 导航栏 -->
+    <nav class="bg-gradient-to-r from-blue-500 via-blue-400 to-pink-300 shadow-md fixed w-full z-10 transition-all duration-300" id="navbar">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center relative">
+            <div class="flex items-center">
+                <i class="fa fa-map-marker text-primary text-2xl mr-2"></i>
+                <span class="text-xl font-bold text-gray-800">桂韵指南针</span>
+            </div>
+            <div class="hidden md:flex space-x-6">
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors duration-200" id="homeLink">首页</a>
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors duration-200" id="scenicLink">景点资讯</a>
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors duration-200" id="foodLink">特色美食</a>
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors duration-200" id="locationServiceLink">位置服务</a>
+                <a href="#" class="text-gray-600 hover:text-primary transition-colors duration-200" id="guideLink">必看推荐</a>
+                <a href="#" class="text-gray-600 hover:text-primary" id="beenLink">大家去过</a>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button id="loginBtn" class="hidden md:block px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors duration-200">
+                    登录
+                </button>
+                <button id="registerBtn" class="hidden md:block px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors duration-200">
+                    注册
+                </button>
+                <div id="userMenu" class="hidden items-center space-x-2">
+                    <span id="userNickname" class="text-gray-700"></span>
+                    <div class="relative">
+                        <button id="profileBtn" class="flex items-center space-x-1">
+                            <i class="fa fa-user-circle text-gray-600"></i>
+                            <i class="fa fa-caret-down text-gray-500"></i>
+                        </button>
+                        <div id="profileDropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 hidden z-20">
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">个人资料</a>
+                            <a href="#" class="block px-4 py-2 text-sm text-primary hover:bg-gray-100" id="changePasswordBtn">修改密码</a>
+                            <a href="#" id="logoutBtn" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100">退出登录</a>
+                        </div>
+                    </div>
+                </div>
+                <button class="md:hidden text-gray-600" id="mobileMenuBtn">
+                    <i class="fa fa-bars text-xl"></i>
+                </button>
+            </div>
+        </div>
+        <!-- 移动端菜单 -->
+        <div id="mobileMenu" class="md:hidden bg-white shadow-lg absolute w-full left-0 top-full py-2 px-4 hidden">
+            <a href="#" class="block py-2 text-gray-600 hover:text-primary" id="mobileHomeLink">首页</a>
+            <a href="#" class="block py-2 text-gray-600 hover:text-primary" id="mobileScenicLink">景点资讯</a>
+            <a href="#" class="block py-2 text-gray-600 hover:text-primary" id="mobileFoodLink">景点信息</a>
+            <a href="#" class="block py-2 text-gray-600 hover:text-primary" id="mobileGuideLink">必看推荐</a>
+            <a href="#" class="block py-2 text-gray-600 hover:text-primary" id="mobileLocationServiceLink">位置服务</a>
+            <a href="#" class="block py-2 text-gray-600 hover:text-primary" id="mobileBeenLink">大家去过</a>
+            <div class="pt-2 flex space-x-4">
+                <button id="mobileLoginBtn" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors duration-200">
+                    登录
+                </button>
+                <button id="mobileRegisterBtn" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors duration-200">
+                    注册
+                </button>
+            </div>
+        </div>
+    </nav>
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 pt-24 pb-12">
+        <section id="homeSection" class="relative mb-16">
+            <!-- 景点轮播区域（无标题，最大化，图片2/3，右侧信息纵向排布+装饰） -->
+            <div id="scenicCarousel" class="relative w-full h-[calc(100vh-120px)] min-h-[480px] max-h-[700px] mx-auto flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-pink-50 rounded-3xl shadow-2xl overflow-hidden border-4 border-blue-200">
+                <!-- 轮播内容将由JS渲染 -->
+            </div>
+            <script>
+            // 10个热门景点数据
+            const scenicData = [
+                { name: '漓江', location: '广西桂林市', img: '/static/scenic/漓江.jpg' },
+                { name: '龙脊梯田', location: '广西桂林市龙胜各族自治县', img: '/static/scenic/龙脊梯田.jpg' },
+                { name: '阳朔西街', location: '广西桂林市阳朔县', img: '/static/scenic/阳朔西街.jpg' },
+                { name: '象鼻山', location: '广西桂林市象山区', img: '/static/scenic/象鼻山.jpg' },
+                { name: '遇龙河漂流', location: '广西桂林市阳朔县', img: '/static/scenic/遇龙河漂流.jpg' },
+                { name: '银子岩', location: '广西桂林市荔浦市', img: '/static/scenic/银子岩.jpg' },
+                { name: '兴坪古镇', location: '广西桂林市阳朔县', img: '/static/scenic/兴坪古镇.jpg' },
+                { name: '两江四湖', location: '广西桂林市', img: '/static/scenic/两江四湖.jpg' },
+                { name: '独秀峰王城景区', location: '广西桂林市秀峰区', img: '/static/scenic/独秀峰王城景区.jpg' },
+                { name: '十里画廊', location: '广西桂林市阳朔县', img: '/static/scenic/十里画廊.jpg' },
+            ];
+            let currentSlide = 0;
+            function renderCarousel() {
+                const data = scenicData[currentSlide];
+                document.getElementById('scenicCarousel').innerHTML = `
+                    <button id="carouselPrev" class="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/70 hover:bg-blue-200 text-blue-600 rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl transition duration-200 border-2 border-blue-100"><i class='fa fa-angle-left'></i></button>
+                    <div class="flex w-full h-full">
+                        <div class="w-2/3 h-full flex items-center justify-center relative">
+                            <img src="${data.img}" alt="${data.name}" class="w-full h-full object-cover rounded-l-3xl shadow-xl border-r-4 border-blue-100 animate-fadein" style="min-height:400px;max-height:100%;" />
+                            <div class="absolute bottom-6 left-8 bg-white/70 px-4 py-2 rounded-xl shadow text-blue-700 text-sm font-semibold tracking-wide backdrop-blur-md border border-blue-200">热门景点</div>
+                        </div>
+                        <div class="w-1/3 h-full flex flex-col justify-center items-start px-10 py-8 bg-gradient-to-b from-white/90 to-blue-50/80 relative animate-fadein">
+                            <div class="flex flex-col gap-6 w-full items-start">
+                                <div class="flex flex-col items-start gap-2">
+                                    <span class="text-4xl md:text-5xl font-extrabold text-blue-700 drop-shadow-lg tracking-wider border-l-8 border-blue-300 pl-4 bg-white/70 rounded-r-xl py-2 px-2 shadow">${data.name}</span>
+                                    <span class="text-lg md:text-2xl font-medium text-gray-600 tracking-wide pl-4 border-l-4 border-pink-200 bg-pink-50/60 rounded-r-lg py-1 px-2 shadow">${data.location}</span>
+                                </div>
+                                <div class="w-12 h-1 rounded-full bg-gradient-to-r from-blue-300 via-pink-200 to-yellow-200 mb-2"></div>
+                                <div class="flex flex-col gap-2 text-base text-gray-500 italic opacity-80 pl-4">
+                                    <span><i class="fa fa-star text-yellow-400 mr-2"></i>必游推荐</span>
+                                    <span><i class="fa fa-camera text-pink-400 mr-2"></i>拍照胜地</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="carouselNext" class="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/70 hover:bg-blue-200 text-blue-600 rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl transition duration-200 border-2 border-blue-100"><i class='fa fa-angle-right'></i></button>
+                    <div class="absolute bottom-6 right-10 flex gap-2">
+                        ${scenicData.map((_,i)=>`<span class='w-3 h-3 rounded-full ${i===currentSlide?'bg-blue-500 shadow-lg scale-125':'bg-blue-200'} inline-block transition-all duration-200 cursor-pointer border border-blue-400' onclick='goToSlide(${i})'></span>`).join('')}
+                    </div>
+                `;
+                document.getElementById('carouselPrev').onclick = () => {
+                    currentSlide = (currentSlide-1+scenicData.length)%scenicData.length;
+                    renderCarousel();
+                };
+                document.getElementById('carouselNext').onclick = () => {
+                    currentSlide = (currentSlide+1)%scenicData.length;
+                    renderCarousel();
+                };
+            }
+            function goToSlide(idx) {
+                currentSlide = idx;
+                renderCarousel();
+            }
+            // 自动轮播
+            setInterval(()=>{
+                currentSlide = (currentSlide+1)%scenicData.length;
+                renderCarousel();
+            }, 6000);
+            window.goToSlide = goToSlide;
+            // 初始化
+            renderCarousel();
+            </script>
+        </section>
+        <section id="scenicSection" class="hidden mb-16">
+            <div class="text-center mb-10">
+                <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800 mb-4">热门景点</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto">桂林以其独特的喀斯特地貌闻名于世，这里有壮观的山水、清澈的河流和丰富的历史文化遗迹</p>
+            </div>
+            <div class="flex flex-col gap-10">
+                <!-- 1. 漓江 -->
+               <div class="flex flex-col md:flex-row items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+  <!-- 图片 -->
+  <img src="/static/scenic/漓江.jpg" alt="漓江"
+       class="w-full md:w-1/2 h-48 md:h-48 md:h-64 object-cover rounded-t-xl md:rounded-l-xl md:rounded-t-none">
+  <!-- 文字 -->
+  <div class="w-full md:w-1/2 p-4 md:p-8 flex-1">
+    <h3 class="text-xl md:text-2xl font-bold text-blue-700 mb-2">漓江</h3>
+    <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：桂林市区至阳朔</p>
+    <p class="text-gray-600 text-sm md:text-base">83 公里喀斯特山水长廊，20 元人民币背景（黄布倒影），乘竹筏看九马画山，傍晚渔翁撒网如诗如画。</p>
+  </div>
+</div>
+                <!-- 2. 龙脊梯田（左右交错） -->
+                <div class="flex flex-col md:flex-row-reverse items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/龙脊梯田.jpg" alt="龙脊梯田" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-r-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-green-700 mb-2">龙脊梯田</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：龙胜县</p>
+                        <p class="text-gray-600 text-sm md:text-base">春如镜面、秋似金阶的梯田群，平安寨 “七星伴月”、金坑大寨 “西山韶乐” 观景点，住吊脚楼体验红瑶文化。</p>
+                    </div>
+                </div>
+                <!-- 3. 阳朔西街 -->
+                <div class="flex flex-col md:flex-row items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/阳朔西街.jpg" alt="阳朔西街" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-l-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-pink-700 mb-2">阳朔西街</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：阳朔县</p>
+                        <p class="text-gray-600 text-sm md:text-base">1400 年历史的青石板老街，白天逛明清骑楼，夜晚泡酒吧嗦米粉，啤酒鱼香飘满街。</p>
+                    </div>
+                </div>
+                <!-- 4. 象鼻山（左右交错） -->
+                <div class="flex flex-col md:flex-row-reverse items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/象鼻山.jpg" alt="象鼻山" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-r-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-yellow-700 mb-2">象鼻山</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：桂林市区</p>
+                        <p class="text-gray-600 text-sm md:text-base">酷似大象汲水的喀斯特石山，登顶俯瞰漓江，水月洞穿江而过，夜景灯光璀璨。</p>
+                    </div>
+                </div>
+                <!-- 5. 遇龙河漂流 -->
+                <div class="flex flex-col md:flex-row items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/遇龙河漂流.jpg" alt="遇龙河漂流" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-l-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-cyan-700 mb-2">遇龙河漂流</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：阳朔县</p>
+                        <p class="text-gray-600 text-sm md:text-base">乘竹筏漂过 28 道堰坝，两岸稻田青山如画，九马归槽、富里桥等景点适合拍照。</p>
+                    </div>
+                </div>
+                <!-- 6. 银子岩（左右交错） -->
+                <div class="flex flex-col md:flex-row-reverse items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/银子岩.jpg" alt="银子岩" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-r-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-gray-700 mb-2">银子岩</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：荔浦市</p>
+                        <p class="text-gray-600 text-sm md:text-base">洞内 “三绝三宝”（雪山飞瀑、瑶池仙境等），钟乳石在灯光下如钻石闪耀，夏季避暑佳地。</p>
+                    </div>
+                </div>
+                <!-- 7. 兴坪古镇 -->
+                <div class="flex flex-col md:flex-row items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/兴坪古镇.jpg" alt="兴坪古镇" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-l-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-indigo-700 mb-2">兴坪古镇</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：阳朔县</p>
+                        <p class="text-gray-600 text-sm md:text-base">千年古镇藏漓江精华段，老寨山看日落，乘渔船游黄布倒影，老街保留明清建筑。</p>
+                    </div>
+                </div>
+                <!-- 8. 两江四湖（左右交错） -->
+                <div class="flex flex-col md:flex-row-reverse items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/两江四湖.jpg" alt="两江四湖" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-r-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-purple-700 mb-2">两江四湖</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：桂林市区</p>
+                        <p class="text-gray-600 text-sm md:text-base">漓江、桃花江与杉湖、榕湖等串成夜景带，乘游船看日月双塔倒影，步行逛玻璃桥。</p>
+                    </div>
+                </div>
+                <!-- 9. 独秀峰王城景区 -->
+                <div class="flex flex-col md:flex-row items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/独秀峰王城景区.jpg" alt="独秀峰王城景区" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-l-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-red-700 mb-2">独秀峰王城景区</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：桂林市区</p>
+                        <p class="text-gray-600 text-sm md:text-base">明代靖江王府旧址，独秀峰刻 “桂林山水甲天下”，摸 “状元石” 沾文气，看实景演出《印象・刘三姐》。</p>
+                    </div>
+                </div>
+                <!-- 10. 十里画廊（左右交错） -->
+                <div class="flex flex-col md:flex-row-reverse items-center bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/static/scenic/十里画廊.jpg" alt="十里画廊" class="w-full md:w-1/2 h-48 md:h-64 object-cover md:rounded-r-xl">
+                    <div class="p-8 flex-1">
+                        <h3 class="text-2xl font-bold text-orange-700 mb-2">十里画廊</h3>
+                        <p class="text-gray-500 mb-1 text-sm md:text-base">所在地：阳朔县</p>
+                        <p class="text-gray-600 text-sm md:text-base">租电动车穿梭月亮山、大榕树等景点，途经蝴蝶泉看侗寨歌舞，遇龙河支流边野餐赏景。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section id="foodSection" class="hidden mb-16">
+            <div class="text-center mb-10">
+                <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800 mb-4">桂林特色美食</h2>
+                <p class="text-gray-600 text-sm md:text-base">桂林有许多特色美食，让您品尝到独特的风味</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- 1. 桂林米粉（国家级非遗） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/桂林米粉.jpg" alt="桂林米粉" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">桂林米粉（国家级非遗）</h3>
+                        <p class="text-gray-700 mb-1">特色：以新鲜米浆制粉，搭配卤水、酸笋、花生，汤头鲜香浓郁，2021 年入选国家级非遗。</p>
+                        <p class="text-gray-500 text-sm">推荐：同来米粉（老味道）、聚祥高汤螺蛳粉（现熬汤头）</p>
+                    </div>
+                </div>
+                <!-- 2. 阳朔啤酒鱼（央视推荐） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/阳朔啤酒鱼.jpg" alt="阳朔啤酒鱼" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">阳朔啤酒鱼（央视推荐）</h3>
+                        <p class="text-gray-700 mb-1">特色：漓江活鱼现杀，啤酒红焖去腥，外酥内嫩，汤汁浓郁，登央视《舌尖上的中国》。</p>
+                        <p class="text-gray-500 text-sm">推荐：大师傅金奖啤酒鱼（西街口总店）</p>
+                    </div>
+                </div>
+                <!-- 3. 荔浦芋扣肉（宫廷贡品） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/荔浦芋扣肉.jpg" alt="荔浦芋扣肉" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">荔浦芋扣肉（宫廷贡品）</h3>
+                        <p class="text-gray-700 mb-1">特色：荔浦槟榔芋 + 五花肉，芋香肉糯，肥而不腻，因《宰相刘罗锅》闻名，广西宴席硬菜。</p>
+                    </div>
+                </div>
+                <!-- 4. 恭城油茶（瑶族非遗） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/恭城油茶.jpg" alt="恭城油茶" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">恭城油茶（瑶族非遗）</h3>
+                        <p class="text-gray-700 mb-1">特色：老叶红茶 + 生姜爆炒，加米花、花生，微苦回甘，2021 年入选国家级非遗，驱寒暖胃。</p>
+                    </div>
+                </div>
+                <!-- 5. 全州醋血鸭（非遗名菜） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/全州醋血鸭.jpg" alt="全州醋血鸭" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">全州醋血鸭（非遗名菜）</h3>
+                        <p class="text-gray-700 mb-1">特色：鸭血调醋去腥，酸辣鲜香，2010 年入选广西非遗，桂北餐桌 “无鸭不成宴”。</p>
+                    </div>
+                </div>
+                <!-- 6. 平乐十八酿（无菜不酿） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/平乐十八酿.jpg" alt="平乐十八酿" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">平乐十八酿（无菜不酿）</h3>
+                        <p class="text-gray-700 mb-1">特色：豆腐、辣椒、茄子等 18 种食材酿肉，口感层次丰富，平乐非遗代表。</p>
+                    </div>
+                </div>
+                <!-- 7. 灵川狗肉（温补名吃） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/灵川狗肉.jpg" alt="灵川狗肉" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">灵川狗肉（温补名吃）</h3>
+                        <p class="text-gray-700 mb-1">特色：肉质香嫩不臊，配桂林三花酒焖制，俗语 “狗肉滚三滚，神仙站不稳”。</p>
+                    </div>
+                </div>
+                <!-- 8. 壮家五色糯米饭（节庆象征） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/壮家五色糯米饭.jpg" alt="壮家五色糯米饭" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">壮家五色糯米饭（节庆象征）</h3>
+                        <p class="text-gray-700 mb-1">特色：红兰草、枫叶等天然染色，软糯清香，三月三必备，寓意五谷丰登。</p>
+                    </div>
+                </div>
+                <!-- 9. 酸炒干鱼仔（漓江风味） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/酸炒干鱼仔.jpg" alt="酸炒干鱼仔" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">酸炒干鱼仔（漓江风味）</h3>
+                        <p class="text-gray-700 mb-1">特色：漓江小鱼干 + 酸笋、辣椒爆炒，酸辣开胃，阳朔夜市必点。</p>
+                    </div>
+                </div>
+                <!-- 10. 桂花汤圆（非遗甜口） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/桂花汤圆.jpg" alt="桂花汤圆" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">桂花汤圆（非遗甜口）</h3>
+                        <p class="text-gray-700 mb-1">特色：糯米团包桂花糖馅，姜糖水熬煮，甜而不腻，西街老字号手工制作。</p>
+                    </div>
+                </div>
+                <!-- 11. 桂林马蹄糕（传统甜点） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/桂林马蹄糕.jpg" alt="桂林马蹄糕" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">桂林马蹄糕（传统甜点）</h3>
+                        <p class="text-gray-700 mb-1">特色：以桂林特产马蹄为原料，米浆混合马蹄碎蒸制，糕体半透明，Q 弹中带马蹄脆甜，夏季消暑佳品。</p>
+                        <p class="text-gray-500 text-sm">推荐：老东江马蹄糕（滨江路店）、金顺昌特产店（真空包装可带走）</p>
+                    </div>
+                </div>
+                <!-- 12. 桂林荷叶粉蒸肉（节庆硬菜） -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
+                    <img src="/特色美食/桂林荷叶粉蒸肉.jpg" alt="桂林荷叶粉蒸肉" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h3 class="text-lg font-bold mb-2">桂林荷叶粉蒸肉（节庆硬菜）</h3>
+                        <p class="text-gray-700 mb-1">特色：五花肉裹米粉，用荷叶包裹蒸制，荷香渗透肉质，肥而不腻，搭配芋头或土豆垫底，春节家宴常见。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+       <!-- ================= 必看推荐·无图·三栏美化·详情面板 ================= -->
+<section id="guideSection" class="hidden mb-16 px-4">
+  <div class="text-center mb-8">
+    <h2 class="text-4xl font-extrabold text-gray-800 mb-2">必看推荐</h2>
+    <p class="text-gray-600">精选周边景点、酒店、美食，一键导航 & 收藏</p>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+    <!-- 景点 -->
+    <div class="flex flex-col">
+      <div class="flex items-center mb-3"><i class="fa fa-camera text-blue-500 text-2xl mr-3"></i><h3 class="text-xl font-bold text-gray-800">附近景点</h3></div>
+      <div id="scenicList" class="space-y-3"></div>
+    </div>
+    <!-- 酒店 -->
+    <div class="flex flex-col">
+      <div class="flex items-center mb-3"><i class="fa fa-bed text-pink-500 text-2xl mr-3"></i><h3 class="text-xl font-bold text-gray-800">周围酒店</h3></div>
+      <div id="hotelList" class="space-y-3"></div>
+    </div>
+    <!-- 美食 -->
+    <div class="flex flex-col">
+      <div class="flex items-center mb-3"><i class="fa fa-cutlery text-amber-500 text-2xl mr-3"></i><h3 class="text-xl font-bold text-gray-800">周边美食</h3></div>
+      <div id="foodList" class="space-y-3"></div>
+    </div>
+
+    <!-- 右侧详情面板（初始隐藏） -->
+    <div id="detailCard" class="hidden lg:col-span-1 sticky top-20">
+      <div class="bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl p-6 ring-1 ring-white/30">
+        <div class="flex justify-between items-center mb-4">
+          <h3 id="detailName" class="text-xl font-bold text-gray-800"></h3>
+          <button onclick="closeDetail()" class="text-gray-500 hover:text-gray-800"><i class="fa fa-times"></i></button>
+        </div>
+        <p id="detailAddr" class="text-sm text-gray-600 mb-2"></p>
+        <p id="detailDist" class="text-sm text-blue-600 mb-4"></p>
+        <div class="flex space-x-3">
+          <button onclick="handleNav()" class="flex-1 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-semibold hover:scale-105 transition">导航</button>
+          <button onclick="handleCollect()" id="collectBtn" class="flex-1 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold hover:scale-105 transition">收藏</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- 无图·三栏美化·详情面板 ---------- */
+(function(){
+  const km = m => m > 1000 ? (m/1000).toFixed(1)+' km' : m+' m';
+  let userLocation = [110.299123, 25.271079];
+  window.currentPoi = {};
+  let collections = JSON.parse(localStorage.getItem('guide_collect')||'[]');
+
+  /* 通用名称卡片（带美化边框） */
+  function buildNameCard(p, type){
+    const card = document.createElement('div');
+    card.className = 'flex items-center justify-between p-3 rounded-2xl bg-white/80 shadow hover:shadow-lg transition cursor-pointer border-l-4';
+    // 不同类别左边框颜色
+    const borderColor = type==='scenic' ? 'border-blue-400' : type==='hotel' ? 'border-pink-400' : 'border-amber-400';
+    card.classList.add(borderColor);
+
+    card.innerHTML = `
+      <div class="flex items-center space-x-3">
+        <i class="fa ${type==='scenic'?'fa-camera':type==='hotel'?'fa-bed':'fa-cutlery'} text-gray-500"></i>
+        <div>
+          <div class="font-semibold text-gray-800">${p.name}</div>
+          <div class="text-xs text-gray-500">${p.address||'暂无地址'}</div>
+        </div>
+      </div>
+      <div class="text-xs text-blue-600">${km(p.distance||0)}</div>`;
+      // 把高德类目映射成后端能识别的枚举
+const typeMap = {
+  scenic: 'scenic',
+  hotel : 'hotel',
+  food  : 'food'
+};
+const realType = typeMap[type] || 'scenic';   // 兜底
+const poiForDetail = {
+  ...p,
+  type: realType,              // 用我们自己规定的值
+  location: p.location
+};
+card.onclick = () => showDetail(poiForDetail);
+    
+    return card;
+  }
+
+  /* 显示详情面板 */
+  window.showDetail = function(poi){
+    window.currentPoi = poi;
+    document.getElementById('detailName').textContent = poi.name;
+    document.getElementById('detailAddr').textContent = poi.address||'暂无地址';
+    document.getElementById('detailDist').textContent = '距您 '+km(poi.distance||0);
+    document.getElementById('collectBtn').textContent = collections.includes(poi.id)?'已收藏':'收藏';
+    document.getElementById('detailCard').classList.remove('hidden');
+  }
+  window.closeDetail = ()=> document.getElementById('detailCard').classList.add('hidden');
+
+/* 导航：跳转到位置服务 + 把景点名称填入终点框 */
+window.handleNav = function () {
+  // 1. 切换页面
+  switchPage(document.getElementById('locationServiceSection'));
+
+  // 2. 等页面渲染完再填值
+  setTimeout(() => {
+    // 填终点名称
+    const endInput = document.getElementById('endPointInput');
+    endInput.value = currentPoi.name;
+
+    // 3. 主动触发一次输入事件，让自动完成/搜索列表出现（可选）
+    endInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // 4. 如果还想直接把它设为终点，可再调一下搜索/选点（可选）
+    // searchEndPOI(currentPoi.name);   // 需要就打开
+  }, 400);
+};
+
+ /* 收藏/取消收藏：真正调用后端接口 */
+window.handleCollect = async function () {
+  if (!window.currentPoi || !window.currentPoi.id) {
+    alert('请先选择景点');
+    return;
+  }
+  const body = {
+    poi_id:      window.currentPoi.id,
+    poi_name:    window.currentPoi.name,
+    poi_address: window.currentPoi.address || '',
+    poi_type:    window.currentPoi.type || 'scenic',
+    lon:         window.currentPoi.location.lng,
+    lat:         window.currentPoi.location.lat
+  };
+  // ① 先在控制台确认字段齐全
+  console.log('请求体 body:', JSON.stringify(body, null, 2));
+
+  try {
+    const resp = await fetch('/api/favorite', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify(body)
+    });
+    const res = await resp.json();
+    if (!res.success) {
+      alert(res.message);   // ② 这里会显示后端具体缺哪个字段
+      return;
+    }
+    document.getElementById('collectBtn').textContent = res.favorited ? '已收藏' : '收藏';
+    alert(res.message);
+  } catch (e) {
+    console.error(e);
+    alert('网络错误，请稍后再试');
+  }
+};
+
+  /* 分类搜索（6条） */
+  window.locateUserAndSearchPOI = function(){
+    if(!window.AMap){setTimeout(locateUserAndSearchPOI,500); return;}
+    AMap.plugin(['AMap.PlaceSearch','AMap.Geolocation'],()=>{
+      const ps = new AMap.PlaceSearch({city:'桂林', pageSize:6});
+      const geo = new AMap.Geolocation({enableHighAccuracy:true, timeout:10000});
+
+      function search(kw, containerId, type){
+        ps.searchNearBy(kw, userLocation, 8000, (status, result)=>{
+          const box = document.getElementById(containerId);
+          box.innerHTML = '';
+          if(status==='complete'&&result.info==='OK'){
+            const pois = result.poiList.pois.map(p=>({...p, id:p.id, distance:Math.round(AMap.GeometryUtil.distance(userLocation,p.location))}));
+            pois.forEach(p=>box.appendChild(buildNameCard(p, type)));
+          }else{
+            box.innerHTML = '<div class="text-gray-400 text-sm text-center py-4">暂无数据</div>';
+          }
+        });
+      }
+
+      /* 默认坐标 */
+      search('', 'scenicList', 'scenic');
+      search('酒店', 'hotelList', 'hotel');
+      search('美食|餐厅', 'foodList', 'food');
+
+      /* 定位成功后刷新 */
+      geo.getCurrentPosition((status,result)=>{
+        if(status==='complete'&&result.position){
+          userLocation = [result.position.lng,result.position.lat];
+          search('', 'scenicList', 'scenic');
+          search('酒店', 'hotelList', 'hotel');
+          search('美食|餐厅', 'foodList', 'food');
+        }
+      });
+    });
+  };
+
+  /* 导航栏入口 */
+  ['guideLink','mobileGuideLink'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('click',()=>{
+      switchPage(document.getElementById('guideSection'));
+      if(!window.POILoaded){ window.POILoaded=true; locateUserAndSearchPOI(); }
+    });
+  });
+})();
+</script>
+<script>
+/* 只运行一次，避免重复绑定 */
+document.addEventListener('DOMContentLoaded', () => {
+  const beenImgInput  = document.getElementById('beenImgInput');
+  const previewBox    = document.getElementById('beenImgPreview');
+  beenImages = [];                       // 全局变量，先清空
+  previewBox.innerHTML = '';             // 把上次残留图清掉
+
+  beenImgInput.addEventListener('change', async function () {
+    const files = Array.from(this.files);
+    if (files.length + beenImages.length > 3) {
+      alert('最多只能上传 3 张图');
+      return;
+    }
+    for (const file of files) {
+      const base64 = await compressImg(file, 800, 0.8);
+      beenImages.push(base64);
+      const img = document.createElement('img');
+      img.src = base64;
+      img.className = 'w-20 h-20 object-cover rounded mr-2 mb-2';
+      previewBox.appendChild(img);
+    }
+  });
+});
+</script>
+
+<section id="beenSection" class="hidden mb-16">
+  <div class="max-w-4xl mx-auto px-4">
+    <div class="text-center mb-8">
+      <h2 class="text-3xl font-bold text-gray-800">大家去过</h2>
+      <p class="text-gray-600 mt-2">留下你的足迹，帮更多人玩转桂林</p>
+    </div>
+    <!-- 发攻略卡片 -->
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+      <textarea id="beenContent" rows="4" class="w-full px-3 py-2 border rounded-lg" placeholder="写下你的游记或小贴士…"></textarea>
+      <div class="mt-3 flex items-center space-x-3">
+        <input id="beenImgInput" type="file" accept="image/*" multiple class="hidden" max="3">
+        <button onclick="document.getElementById('beenImgInput').click()" class="px-3 py-1 border border-blue-400 text-blue-500 rounded-full text-sm">
+          <i class="fa fa-image mr-1"></i>+图片（最多3张）
+        </button>
+      </div>
+      <div id="beenImgPreview" class="mt-3 grid grid-cols-3 gap-2"></div>
+      <button id="submitBeen" onclick="submitBeen()" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-full">发布</button>
+    </div>
+
+    <!-- 攻略列表 -->
+    <div id="beenList" class="space-y-4"></div>
+  </div>
+</section>
+        <section id="locationServiceSection" class="hidden mb-16">
+            <div class="text-center mb-10">
+                <h2 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800 mb-4">位置服务推荐</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto">为您推荐周边的酒店、美食和旅游景点</p>
+            </div>
+            <div class="flex flex-col md:flex-row gap-4">
+                <!-- 路线规划左侧面板 -->
+                <div class="w-full md:w-1/3 bg-white rounded-lg shadow-md p-4">
+                    <h2 class="text-lg font-semibold mb-4 text-gray-700">路线规划</h2>
+                    <!-- 起点设置 -->
+                    <div class="mb-4">
+                        <h3 class="text-md font-medium mb-2 text-gray-700 flex items-center">
+                            <i class="fa fa-map-marker text-green-500 mr-2"></i>起点
+                        </h3>
+                        <div class="flex flex-col space-y-2">
+            <!-- 起点选点按钮与输入框 -->
+            <button id="useMapStartPoint" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm transition flex items-center mb-2">
+                <i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点
+            </button>
+            <div class="relative">
+                <input id="startPointInput" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入起点或点击地图/定位" autocomplete="off">
+                <div id="startSearchResults" class="absolute left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg mt-1 z-20 hidden"></div>
+                <div id="nearbyPOIResults" class="absolute left-0 right-0 bg-white border border-blue-200 rounded-md shadow-lg mt-1 z-30 hidden"></div>
+                <button id="locateCurrentBtn" type="button" class="absolute top-1 right-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded text-sm transition flex items-center" title="定位">
+                    <i class="fa fa-location-arrow"></i>
+                </button>
+            </div>
+            <div id="startPointInfo" class="text-sm text-gray-500 mt-1"></div>
+                            <!-- 上方已合并到新的输入框区域 -->
+                        </div>
+                    </div>
+                    <!-- 终点设置 -->
+                    <div class="mb-4">
+                        <h3 class="text-md font-medium mb-2 text-gray-700 flex items-center">
+                            <i class="fa fa-flag text-red-500 mr-2"></i>终点
+                        </h3>
+                        <div class="flex flex-col space-y-2">
+                            <button id="useMapEndPoint" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm transition flex items-center">
+                                <i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点
+                            </button>
+                            <div class="relative">
+                                <input type="text" id="endPointInput" class="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入终点名称">
+                                <div id="endSearchResults" class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg search-results hidden"></div>
+                            </div>
+                            <div id="endPointInfo" class="text-sm text-gray-500"></div>
+                        </div>
+                    </div>
+                    <!-- 路线规划按钮 -->
+                    <button id="routeBtn" disabled class="w-full bg-gray-400 hover:bg-gray-500 text-white px-6 py-2 rounded-md text-base font-medium transition cursor-not-allowed">
+                        <i class="fa fa-road mr-2"></i>规划路线
+                    </button>
+                </div>
+                <!-- 右侧地图区域 -->
+                <div class="w-full md:w-2/3 bg-white rounded-lg shadow-md relative">
+                   <div id="container" class="w-full h-[300px] md:h-[500px]"></div>
+                    <!-- 路线详情框 -->
+                    <div id="routePanel" class="route-panel hidden">
+                        <div class="p-3 bg-blue-500 text-white flex justify-between items-center">
+                            <h3 class="text-md font-medium flex items-center">
+                                <i class="fa fa-directions mr-2"></i>路线详情
+                            </h3>
+                            <button id="closeRoutePanel" class="text-white hover:text-gray-200">
+                                <i class="fa fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="p-3">
+                            <div id="routeInfo" class="text-sm text-gray-600 mb-2"></div>
+                            <div id="drivingPanel" class="text-sm"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- 登录/注册模态框 -->
+        <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+            <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+            <div id="modalContent" class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all duration-300 scale-95 opacity-0">
+                <div class="flex justify-between items-center p-6 border-b">
+                    <h3 id="modalTitle" class="text-xl font-bold text-gray-800">登录</h3>
+                    <button id="closeModal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div id="loginForm">
+                        <div class="mb-4">
+                            <label for="loginPhone" class="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                    <i class="fa fa-phone"></i>
+                                </span>
+                                <input type="tel" id="loginPhone" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入手机号" required>
+                            </div>
+                        </div>
+                        <div class="mb-6">
+                            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                    <i class="fa fa-lock"></i>
+                                </span>
+                                <input type="password" id="loginPassword" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入密码" required>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="rememberMe" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                                <label for="rememberMe" class="ml-2 text-sm text-gray-600">记住我</label>
+                            </div>
+                            <a href="#" class="text-sm text-primary hover:text-primary/80">忘记密码？</a>
+                        </div>
+                        <button id="doLogin" class="w-full py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 font-medium">
+                            登录
+                        </button>
+                        <div class="mt-4 text-center">
+                            <span class="text-gray-600">还没有账号？</span>
+                            <button id="switchToRegister" class="text-primary hover:text-primary/80 font-medium">立即注册</button>
+                        </div>
+                    </div>
+                    <div id="registerForm" class="hidden">
+                        <div class="mb-4">
+                            <label for="registerPhone" class="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                    <i class="fa fa-phone"></i>
+                                </span>
+                                <input type="tel" id="registerPhone" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入手机号" required>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label for="registerName" class="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                    <i class="fa fa-user"></i>
+                                </span>
+                                <input type="text" id="registerName" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入姓名" required>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label for="registerPassword" class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                    <i class="fa fa-lock"></i>
+                                </span>
+                                <input type="password" id="registerPassword" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入密码" required>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label for="registerNickname" class="block text-sm font-medium text-gray-700 mb-1">昵称</label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                    <i class="fa fa-user"></i>
+                                </span>
+                                <input type="text" id="registerNickname" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入昵称" required>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label for="registerGender" class="block text-sm font-medium text-gray-700 mb-1">性别</label>
+                            <select id="registerGender" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200">
+                                <option value="男">男</option>
+                                <option value="女">女</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label for="registerBirthdate" class="block text-sm font-medium text-gray-700 mb-1">出生日期</label>
+                            <input type="date" id="registerBirthdate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" required>
+                        </div>
+                        <button id="doRegister" class="w-full py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 font-medium">
+                            注册
+                        </button>
+                        <div class="mt-4 text-center">
+                            <span class="text-gray-600">已有账号？</span>
+                            <button id="switchToLogin" class="text-primary hover:text-primary/80 font-medium">立即登录</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 修改密码模态框 -->
+        <div id="changePasswordModal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+            <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+            <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all duration-300 scale-95 opacity-0">
+                <div class="flex justify-between items-center p-6 border-b">
+                    <h3 class="text-xl font-bold text-gray-800">修改密码</h3>
+                    <button id="closeChangePasswordModal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div class="mb-4">
+                        <!-- 当前手机号 -->
+<div class="mb-4">
+    <label for="currentPhone" class="block text-sm font-medium text-gray-700 mb-1">当前手机号</label>
+    <div class="relative">
+        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+            <i class="fa fa-phone"></i>
+        </span>
+        <input type="tel" id="currentPhone" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入当前手机号" required>
+    </div>
+</div>
+                        <label for="currentPassword" class="block text-sm font-medium text-gray-700 mb-1">当前密码</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                <i class="fa fa-lock"></i>
+                            </span>
+                            <input type="password" id="currentPassword" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入当前密码" required>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <label for="newPassword" class="block text-sm font-medium text-gray-700 mb-1">新密码</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                                <i class="fa fa-lock"></i>
+                            </span>
+                            <input type="password" id="newPassword" class="pl-10 w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors duration-200" placeholder="请输入新密码" required>
+                        </div>
+                    </div>
+                    <button id="submitChangePassword" class="w-full py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 font-medium">
+                        提交修改
+                    </button>
+                </div>
+            </div>
+        </div>
+      <!-- 个人资料模态框 -->
+<div id="profileModal" class="fixed inset-0 z-50 flex items-center justify-center hidden">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all duration-300 scale-95 opacity-0">
+    <div class="flex justify-between items-center p-6 border-b">
+      <h3 class="text-xl font-bold text-gray-800">个人资料</h3>
+      <button id="closeProfileModal" class="text-gray-500 hover:text-gray-700">
+        <i class="fa fa-times text-xl"></i>
+      </button>
+    </div>
+
+    <!-- 只读展示区 -->
+    <div id="profileView" class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+        <div id="viewPhone" class="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800"></div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">昵称</label>
+        <div id="viewNickname" class="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800"></div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">性别</label>
+        <div id="viewGender" class="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800"></div>
+      </div>
+      <button id="btnEditProfile" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+        修改
+      </button>
+    </div>
+
+    <!-- 编辑区（默认隐藏） -->
+    <div id="profileEdit" class="hidden p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+        <input id="profilePhone" type="tel" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="手机号">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">昵称</label>
+        <input id="profileNickname" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="昵称">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">性别</label>
+        <select id="profileGender" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+          <option value="男">男</option>
+          <option value="女">女</option>
+        </select>
+      </div>
+      <div class="flex space-x-3">
+        <button id="saveProfile" class="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">保存</button>
+        <button id="cancelProfile" class="flex-1 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-gray-800 text-white py-12">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <h3 class="text-xl font-bold mb-4">桂韵指南针</h3>
+                    <p class="text-gray-400">探索桂林山水之美，体验独特的自然风光和丰富的文化遗产。</p>
+                    <div class="flex space-x-4 mt-4">
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">
+                            <i class="fa fa-weibo"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">
+                            <i class="fa fa-wechat"></i>
+                        </a>
+                        <a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">
+                            <i class="fa fa-instagram"></i>
+                        </a>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">快速链接</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">首页</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">景点资讯</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">景点信息</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">必看推荐</a></li>
+                        <li><a href="#" class="text-gray-400 hover:text-white transition-colors duration-200">位置服务</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">联系我们</h4>
+                    <ul class="space-y-2">
+                        <li class="flex items-center">
+                            <i class="fa fa-map-marker w-5 text-gray-400"></i>
+                            <span class="text-gray-400">广西壮族自治区桂林市</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fa fa-phone w-5 text-gray-400"></i>
+                            <span class="text-gray-400">+86 123 4567 8901</span>
+                        </li>
+                        <li class="flex items-center">
+                            <i class="fa fa-envelope w-5 text-gray-400"></i>
+                            <span class="text-gray-400">info@guilin-travel.com</span>
+                        </li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">订阅最新资讯</h4>
+                    <p class="text-gray-400 mb-4">订阅我们的电子邮件，获取最新的旅游资讯和优惠信息。</p>
+                    <div class="flex">
+                        <input type="email" placeholder="您的邮箱地址" class="px-4 py-2 bg-gray-700 text-white rounded-l-lg focus:outline-none focus:ring-2 focus:ring-primary flex-1">
+                        <button class="px-4 py-2 bg-primary text-white rounded-r-lg hover:bg-primary/90 transition-colors duration-200">
+                            订阅
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2025 桂韵指南针. 保留所有权利.</p>
+            </div>
+        </div>
+    </footer>
+    <script>
+        // DOM 元素
+        const loginBtn = document.getElementById('loginBtn');
+        const registerBtn = document.getElementById('registerBtn');
+        const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+        const mobileRegisterBtn = document.getElementById('mobileRegisterBtn');
+        const authModal = document.getElementById('authModal');
+        const modalContent = document.getElementById('modalContent');
+        const closeModal = document.getElementById('closeModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+        const switchToRegister = document.getElementById('switchToRegister');
+        const switchToLogin = document.getElementById('switchToLogin');
+        const doLogin = document.getElementById('doLogin');
+        const doRegister = document.getElementById('doRegister');
+        const userMenu = document.getElementById('userMenu');
+        const userNickname = document.getElementById('userNickname');
+        const profileBtn = document.getElementById('profileBtn');
+        const profileDropdown = document.getElementById('profileDropdown');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const changePasswordBtn = document.getElementById('changePasswordBtn');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        const navbar = document.getElementById('navbar');
+        const homeLink = document.getElementById('homeLink');
+        const scenicLink = document.getElementById('scenicLink');
+        const foodLink = document.getElementById('foodLink');
+        const guideLink = document.getElementById('guideLink');
+        const locationServiceLink = document.getElementById('locationServiceLink');
+        const mobileHomeLink = document.getElementById('mobileHomeLink');
+        const mobileScenicLink = document.getElementById('mobileScenicLink');
+        const mobileFoodLink = document.getElementById('mobileFoodLink');
+        const mobileGuideLink = document.getElementById('mobileGuideLink');
+        const mobileLocationServiceLink = document.getElementById('mobileLocationServiceLink');
+        const homeSection = document.getElementById('homeSection');
+        const scenicSection = document.getElementById('scenicSection');
+        const foodSection = document.getElementById('foodSection');
+        const guideSection = document.getElementById('guideSection');
+        const locationServiceSection = document.getElementById('locationServiceSection');
+        const guideContent = document.getElementById('guideContent');
+        const submitGuide = document.getElementById('submitGuide');
+        const guideList = document.getElementById('guideList');
+        const changePasswordModal = document.getElementById('changePasswordModal');
+        const closeChangePasswordModal = document.getElementById('closeChangePasswordModal');
+        const currentPassword = document.getElementById('currentPassword');
+        const newPassword = document.getElementById('newPassword');
+        const submitChangePassword = document.getElementById('submitChangePassword');
+
+        // 打开模态框
+        function openModal() {
+            authModal.classList.remove('hidden');
+            setTimeout(() => {
+                modalContent.classList.remove('scale-95', 'opacity-0');
+                modalContent.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        // 关闭模态框
+        function closeModalFunc() {
+            modalContent.classList.remove('scale-100', 'opacity-100');
+            modalContent.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                authModal.classList.add('hidden');
+            }, 300);
+        }
+
+        // 打开修改密码模态框
+        function openChangePasswordModal() {
+            changePasswordModal.classList.remove('hidden');
+            setTimeout(() => {
+                changePasswordModal.children[1].classList.remove('scale-95', 'opacity-0');
+                changePasswordModal.children[1].classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        // 关闭修改密码模态框
+        function closeChangePasswordModalFunc() {
+            changePasswordModal.children[1].classList.remove('scale-100', 'opacity-100');
+            changePasswordModal.children[1].classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                changePasswordModal.classList.add('hidden');
+            }, 300);
+        }
+
+        // 切换到注册表单
+        function showRegisterForm() {
+            modalTitle.textContent = '注册';
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+        }
+
+        // 切换到登录表单
+        function showLoginForm() {
+            modalTitle.textContent = '登录';
+            registerForm.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+        }
+
+        // 显示用户信息
+        function showUserInfo(user) {
+            userNickname.textContent = user.nickname;
+            // 显示用户菜单栏，隐藏所有登录/注册按钮
+            if (userMenu) {
+                userMenu.style.display = '';
+                userMenu.classList.remove('hidden');
+            }
+            if (loginBtn) {
+                loginBtn.style.display = 'none';
+                loginBtn.classList.add('hidden');
+            }
+            if (registerBtn) {
+                registerBtn.style.display = 'none';
+                registerBtn.classList.add('hidden');
+            }
+            if (mobileLoginBtn) {
+                mobileLoginBtn.style.display = 'none';
+                mobileLoginBtn.classList.add('hidden');
+            }
+            if (mobileRegisterBtn) {
+                mobileRegisterBtn.style.display = 'none';
+                mobileRegisterBtn.classList.add('hidden');
+            }
+        }
+
+        // 显示未登录状态
+        function showNotLoggedIn() {
+            // 隐藏用户菜单栏，显示所有登录/注册按钮
+            if (userMenu) {
+                userMenu.style.display = 'none';
+                userMenu.classList.add('hidden');
+            }
+            if (loginBtn) {
+                loginBtn.style.display = '';
+                loginBtn.classList.remove('hidden');
+            }
+            if (registerBtn) {
+                registerBtn.style.display = '';
+                registerBtn.classList.remove('hidden');
+            }
+            if (mobileLoginBtn) {
+                mobileLoginBtn.style.display = '';
+                mobileLoginBtn.classList.remove('hidden');
+            }
+            if (mobileRegisterBtn) {
+                mobileRegisterBtn.style.display = '';
+                mobileRegisterBtn.classList.remove('hidden');
+            }
+        }
+
+        // 检查用户是否已登录
+        function checkLogin() {
+            fetch('/api/check_login')
+               .then(response => {
+                    if (!response.ok) {
+                        throw new Error('网络请求失败');
+                    }
+                    return response.json();
+                })
+               .then(data => {
+                    if (data.success) {
+                        showUserInfo(data.user);
+                    } else {
+                        showNotLoggedIn();
+                    }
+                })
+               .catch(error => {
+                    console.error('检查登录状态失败:', error);
+                });
+        }
+
+// 登录处理
+function handleLogin() {
+    const phone = document.getElementById('loginPhone').value;
+    const password = document.getElementById('loginPassword').value;
+    fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password })
+    })
+    .then(r => r.json())
+    .then(data => {
+       if (data.success) {
+    /* 1. 保存到 localStorage（原来就有） */
+    localStorage.setItem('userPhone', data.user.phone);
+
+    /* 2. 新增：保存到 sessionStorage，供个人资料弹窗使用 */
+    sessionStorage.setItem('phone',    data.user.phone);
+    sessionStorage.setItem('nickname', data.user.nickname);
+    sessionStorage.setItem('gender',   '男');   // 如果后端返回了 gender，就用 data.user.gender
+
+    alert('登录成功');
+    closeModalFunc();
+    checkLogin();
+} else {
+    alert(data.message);
+}
+    })
+    .catch(err => {
+        console.error(err);
+        alert('登录请求失败，请稍后再试');
+    });
+}
+
+        // 注册处理
+        function handleRegister() {
+            const phone = document.getElementById('registerPhone').value;
+            const name = document.getElementById('registerName').value;
+            const password = document.getElementById('registerPassword').value;
+            const nickname = document.getElementById('registerNickname').value;
+            const gender = document.getElementById('registerGender').value;
+            const birthdate = document.getElementById('registerBirthdate').value;
+            fetch('/api/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phone: phone,
+                    name: name,
+                    password: password,
+                    nickname: nickname,
+                    gender: gender,
+                    birthdate: birthdate
+                })
+            })
+           .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络请求失败');
+                }
+                return response.json();
+            })
+           .then(data => {
+                if (data.success) {
+                    alert('注册成功，请登录');
+                    showLoginForm();
+                } else {
+                    alert(data.message);
+                }
+            })
+           .catch(error => {
+                console.error('注册失败:', error);
+                alert('注册请求失败，请稍后再试');
+            });
+        }
+
+        // 退出登录
+        function handleLogout() {
+            fetch('/api/logout', {
+                method: 'POST'
+            })
+           .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络请求失败');
+                }
+                return response.json();
+            })
+           .then(data => {
+                if (data.success) {
+                    alert('已成功退出登录');
+                    checkLogin();
+                } else {
+                    alert(data.message);
+                }
+            })
+           .catch(error => {
+                console.error('退出登录失败:', error);
+                alert('退出登录请求失败，请稍后再试');
+            });
+        }
+
+// 修改密码处理
+function handleChangePassword() {
+    const currentPhone = document.getElementById('currentPhone').value.trim();
+    const currentPwd   = document.getElementById('currentPassword').value.trim();
+    const newPwd       = document.getElementById('newPassword').value.trim();
+
+    if (!currentPhone || !currentPwd || !newPwd) {
+        alert('请完整填写信息');
+        return;
+    }
+    if (newPwd.length < 6) {
+        alert('新密码长度至少为6位');
+        return;
+    }
+
+    fetch('/api/change_password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            current_phone: currentPhone,
+            current_password: currentPwd,
+            new_password: newPwd
+        })
+    })
+.then(r => r.json())
+.then(data => {
+    if (data.success) {
+        /* 1. 保存到 localStorage（原来就有） */
+        localStorage.setItem('userPhone', data.user.phone);
+
+        /* 2. 关键：必须写进 sessionStorage，否则个人资料弹窗读不到 */
+        sessionStorage.setItem('phone',    data.user.phone);
+        sessionStorage.setItem('nickname', data.user.nickname);
+        sessionStorage.setItem('gender',   data.user.gender || '男');
+
+        alert('登录成功');
+        closeModalFunc();
+        checkLogin();
+    } else {
+        alert(data.message);
+    }
+})
+    .catch(err => {
+        console.error(err);
+        alert('网络错误，请稍后再试');
+    });
+}
+
+        // 导航栏滚动效果
+        function handleScroll() {
+            if (window.scrollY > 10) {
+                navbar.classList.add('py-2', 'shadow-lg');
+                navbar.classList.remove('py-3', 'shadow-md');
+            } else {
+                navbar.classList.add('py-3', 'shadow-md');
+                navbar.classList.remove('py-2', 'shadow-lg');
+            }
+        }
+
+
+
+        // 发布攻略
+        function submitGuideHandler() {
+            const content = guideContent.value.trim();
+            if (!content) {
+                alert('攻略内容不能为空');
+                return;
+            }
+            const phone = userNickname.textContent; // 从用户昵称获取手机号（假设昵称即手机号）
+            fetch('/api/submit_guide', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phone_number: phone,
+                    content: content
+                })
+            })
+           .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络请求失败');
+                }
+                return response.json();
+            })
+           .then(data => {
+                if (data.success) {
+                    alert('攻略发布成功');
+                    guideContent.value = '';
+                    loadGuides();
+                } else {
+                    alert(data.message);
+                }
+            })
+           .catch(error => {
+                console.error('发布攻略失败:', error);
+                alert('发布攻略请求失败，请稍后再试');
+            });
+        }
+
+        // 加载攻略
+        function loadGuides() {
+            fetch('/api/get_guides')
+               .then(response => {
+                    if (!response.ok) {
+                        throw new Error('网络请求失败');
+                    }
+                    return response.json();
+                })
+               .then(data => {
+                    if (data.success) {
+                        guideList.innerHTML = '';
+                        data.guides.forEach(guide => {
+                            const showName = guide.nickname && guide.nickname.trim() ? guide.nickname : guide.phone_number;
+                            const guideItem = document.createElement('div');
+                            guideItem.classList.add('bg-white', 'rounded-xl', 'shadow-lg', 'p-8', 'mb-4');
+                            guideItem.innerHTML = `
+                                <p class="text-gray-600">用户昵称: ${showName}</p>
+                                <p class="text-gray-600">发布时间: ${guide.PublishDate}</p>
+                                <p class="text-gray-800 text-lg font-bold mb-2">攻略内容:</p>
+                                <p class="text-gray-600">${guide.Content}</p>
+                            `;
+                            guideList.appendChild(guideItem);
+                        });
+                    } else {
+                        alert(data.message);
+                    }
+                })
+               .catch(error => {
+                    console.error('加载攻略失败:', error);
+                    alert('加载攻略请求失败，请稍后再试');
+                });
+        }
+
+        // 初始化事件监听
+        function initEventListeners() {
+            try {
+            // 登录注册按钮
+            loginBtn.addEventListener('click', () => {
+                showLoginForm();
+                openModal();
+            });
+            registerBtn.addEventListener('click', () => {
+                showRegisterForm();
+                openModal();
+            });
+            mobileLoginBtn.addEventListener('click', () => {
+                showLoginForm();
+                openModal();
+                mobileMenu.classList.add('hidden');
+            });
+            mobileRegisterBtn.addEventListener('click', () => {
+                showRegisterForm();
+                openModal();
+                mobileMenu.classList.add('hidden');
+            });
+            // 模态框控制
+            closeModal.addEventListener('click', closeModalFunc);
+            switchToRegister.addEventListener('click', showRegisterForm);
+            switchToLogin.addEventListener('click', showLoginForm);
+            authModal.addEventListener('click', (e) => {
+                if (e.target === authModal) {
+                    closeModalFunc();
+                }
+            });
+            // 登录注册提交
+            doLogin.addEventListener('click', handleLogin);
+            doRegister.addEventListener('click', handleRegister);
+            // 用户菜单
+            profileBtn.addEventListener('click', () => {
+                profileDropdown.classList.toggle('hidden');
+            });
+            logoutBtn.addEventListener('click', handleLogout);
+            changePasswordBtn.addEventListener('click', openChangePasswordModal);
+            // 移动端菜单
+            mobileMenuBtn.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+            // 点击其他区域关闭下拉菜单
+            document.addEventListener('click', (e) => {
+                if (!profileBtn.contains(e.target) && !profileDropdown.contains(e.target)) {
+                    profileDropdown.classList.add('hidden');
+                }
+            });
+            // 导航栏滚动效果
+            window.addEventListener('scroll', handleScroll);
+            // 导航栏链接
+            homeLink.addEventListener('click', () => switchPage(homeSection));
+            scenicLink.addEventListener('click', () => switchPage(scenicSection));
+            foodLink.addEventListener('click', () => switchPage(foodSection));
+            locationServiceLink.addEventListener('click', () => {
+                switchPage(locationServiceSection);
+            });
+            mobileHomeLink.addEventListener('click', () => {
+                switchPage(homeSection);
+                mobileMenu.classList.add('hidden');
+            });
+            mobileScenicLink.addEventListener('click', () => {
+                switchPage(scenicSection);
+                mobileMenu.classList.add('hidden');
+            });
+            mobileFoodLink.addEventListener('click', () => {
+                switchPage(foodSection);
+                mobileMenu.classList.add('hidden');
+            });
+            mobileGuideLink.addEventListener('click', () => {
+                switchPage(guideSection);
+                mobileMenu.classList.add('hidden');
+               
+            });
+            mobileLocationServiceLink.addEventListener('click', () => {
+                switchPage(locationServiceSection);
+                mobileMenu.classList.add('hidden');
+            });
+            // 发布攻略
+            submitGuide && submitGuide.addEventListener('click', submitGuideHandler);
+            // 修改密码
+            submitChangePassword && submitChangePassword.addEventListener('click', handleChangePassword);
+            closeChangePasswordModal && closeChangePasswordModal.addEventListener('click', closeChangePasswordModalFunc);
+            changePasswordModal && changePasswordModal.addEventListener('click', (e) => {
+                if (e.target === changePasswordModal) {
+                    closeChangePasswordModalFunc();
+                }
+            });
+            } catch(e) {
+                console.error('initEventListeners error:', e);
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            initEventListeners();
+            checkLogin();
+            handleScroll();
+            // 初始化高德地图导航与定位功能
+            initLocationServiceMap();
+            // 单独添加必看推荐监听
+            const guideLink = document.getElementById('guideLink');
+            if (guideLink) {
+                guideLink.addEventListener('click', () => {
+                    switchPage(document.getElementById('guideSection'));
+                    // 初始化POI搜索
+                    if (!guidePOIInited) {
+                        setTimeout(() => {
+                            locateUserAndSearchPOI();
+                            guidePOIInited = true;
+                        }, 500);
+                    }
+                });
+            }
+        });
+
+        // 位置服务地图与导航功能
+        function initLocationServiceMap() {
+            console.log('initLocationServiceMap called');
+            if (!document.getElementById('container')) {
+                console.log('Container not found, skipping init');
+                return;
+            }
+            console.log('AMap loaded:', !!window.AMap);
+            if (!window.AMap) {
+                console.error('AMap not loaded');
+                return;
+            }
+            let map, driving, startPlaceSearch, endPlaceSearch, startAutoComplete, endAutoComplete, geolocation;
+            let startPoint = null, endPoint = null, startMarker = null, endMarker = null;
+            let isSelectingStartPoint = false, isSelectingEndPoint = false;
+
+            try {
+                console.log('Creating AMap.Map...');
+                map = new AMap.Map("container", {
+                    resizeEnable: true,
+                    center: [110.29, 25.29],
+                    zoom: 11
+                });
+                console.log('Map created successfully, map object:', map);
+                locationMap = map;  // 设置全局地图对象
+                locationMapInited = true;  // 标记已初始化
+                console.log('Map initialized and assigned to global');
+            } catch (e) {
+                console.error('Map creation failed:', e);
+                return;
+            }
+            driving = new AMap.Driving({ map: map, panel: "drivingPanel" });
+
+            AMap.plugin(['AMap.PlaceSearch', 'AMap.AutoComplete', 'AMap.Geolocation'], function() {
+                startAutoComplete = new AMap.AutoComplete({ input: "startPointInput", city: "桂林", citylimit: true });
+                startPlaceSearch = new AMap.PlaceSearch({ city: "桂林", map: null });
+                endAutoComplete = new AMap.AutoComplete({ input: "endPointInput", city: "桂林", citylimit: true });
+                endPlaceSearch = new AMap.PlaceSearch({ city: "桂林", map: null });
+                geolocation = new AMap.Geolocation({ enableHighAccuracy: true, timeout: 10000, buttonOffset: new AMap.Pixel(10, 20), zoomToAccuracy: true, buttonPosition: 'RB' });
+                map.addControl(geolocation);
+                geolocation.on('complete', onLocationComplete);
+                geolocation.on('error', onLocationError);
+                // 强制隐藏高德原生自动完成提示层
+                const style = document.createElement('style');
+                style.innerHTML = '.amap-sug-result { display: none !important; }';
+                document.head.appendChild(style);
+                document.getElementById('startPointInput').addEventListener('input', function() {
+                    if(this.value.trim().length > 1) {
+                        startAutoComplete.search(this.value, function(status, result) {
+                            if(status === 'complete' && result.info === 'OK') showStartSearchResults(result.tips);
+                        });
+                    } else hideStartSearchResults();
+                });
+                document.getElementById('endPointInput').addEventListener('input', function() {
+                    if(this.value.trim().length > 1) {
+                        endAutoComplete.search(this.value, function(status, result) {
+                            if(status === 'complete' && result.info === 'OK') showEndSearchResults(result.tips);
+                        });
+                    } else hideEndSearchResults();
+                });
+            });
+            map.on('click', function(e) {
+                if(isSelectingStartPoint) { setStartPoint(e.lnglat, '地图点击位置'); isSelectingStartPoint = false; updateMapClickButtons(); }
+                else if(isSelectingEndPoint) { setEndPoint(e.lnglat, '地图点击位置'); isSelectingEndPoint = false; updateMapClickButtons(); }
+            });
+            document.getElementById('useMapStartPoint').addEventListener('click', function() {
+                isSelectingStartPoint = !isSelectingStartPoint; isSelectingEndPoint = false; updateMapClickButtons();
+            });
+            document.getElementById('useMapEndPoint').addEventListener('click', function() {
+                isSelectingEndPoint = !isSelectingEndPoint; isSelectingStartPoint = false; updateMapClickButtons();
+            });
+            document.getElementById('locateCurrentBtn').addEventListener('click', function() {
+                locateCurrentPosition();
+            });
+            document.getElementById('routeBtn').addEventListener('click', planRoute);
+            document.getElementById('closeRoutePanel').addEventListener('click', function() {
+                document.getElementById('routePanel').classList.add('hidden');
+            });
+            function updateMapClickButtons() {
+                const startBtn = document.getElementById('useMapStartPoint');
+                const endBtn = document.getElementById('useMapEndPoint');
+                if(isSelectingStartPoint) {
+                    startBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                    startBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                    startBtn.innerHTML = '<i class="fa fa-check mr-1"></i>正在选起点...';
+                    endBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    endBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                    endBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+                } else if(isSelectingEndPoint) {
+                    endBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                    endBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                    endBtn.innerHTML = '<i class="fa fa-check mr-1"></i>正在选终点...';
+                    startBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    startBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                    startBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+                } else {
+                    startBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    startBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                    startBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+                    endBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    endBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                    endBtn.innerHTML = '<i class="fa fa-hand-pointer-o mr-1"></i>点击地图选点';
+                }
+            }
+            function locateCurrentPosition() {
+                const btn = document.getElementById('locateCurrentBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa fa-spinner fa-spin mr-1"></i>定位中...';
+                let retry = 0;
+                function tryLocate() {
+                    geolocation.getCurrentPosition();
+                }
+                geolocation.on('complete', function handler(data) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa fa-location-arrow mr-1"></i>定位当前';
+                    if(data && data.position) {
+                        setStartPoint(data.position, '当前位置');
+                        geolocation.off('complete', handler);
+                        geolocation.off('error', errorHandler);
+                    } else {
+                        if(retry < 2) { retry++; tryLocate(); } else { alert('定位成功但未获取到位置信息'); geolocation.off('complete', handler); geolocation.off('error', errorHandler); }
+                    }
+                });
+                function errorHandler(err) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa fa-location-arrow mr-1"></i>定位当前';
+                    if(retry < 2) { retry++; tryLocate(); } else { alert('定位失败，请检查浏览器定位权限或稍后重试'); geolocation.off('complete', handler); geolocation.off('error', errorHandler); }
+                }
+                geolocation.on('error', errorHandler);
+                tryLocate();
+            }
+            function onLocationComplete(data) {}
+            function onLocationError(data) {}
+            function setStartPoint(lnglat, name) {
+                startPoint = lnglat;
+                document.getElementById('startPointInfo').textContent = `起点: ${name} (${lnglat.getLng().toFixed(6)}, ${lnglat.getLat().toFixed(6)})`;
+                document.getElementById('startPointInput').value = '';
+                hideStartSearchResults();
+                hideNearbyPOIResults();
+                if(startMarker) map.remove(startMarker);
+                startMarker = new AMap.Marker({ position: lnglat, icon: "https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png", title: name });
+                startMarker.setMap(map);
+                checkRouteButton();
+                // 如果是定位到当前位置，弹出附近POI选择层
+                if(name === '当前位置') {
+                    searchNearbyPOI(lnglat);
+                }
+            }
+            function setEndPoint(lnglat, name) {
+                endPoint = lnglat;
+                document.getElementById('endPointInfo').textContent = `终点: ${name} (${lnglat.getLng().toFixed(6)}, ${lnglat.getLat().toFixed(6)})`;
+                document.getElementById('endPointInput').value = '';
+                hideEndSearchResults();
+                if(endMarker) map.remove(endMarker);
+                endMarker = new AMap.Marker({ position: lnglat, icon: "https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png", title: name });
+                endMarker.setMap(map);
+                checkRouteButton();
+            }
+            function showStartSearchResults(tips) {
+                const resultsContainer = document.getElementById('startSearchResults');
+                resultsContainer.innerHTML = '';
+                if(tips && tips.length > 0) {
+                    tips.forEach(tip => {
+                        const item = document.createElement('div');
+                        item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+                        item.textContent = tip.name;
+                        item.addEventListener('click', function() {
+                            document.getElementById('startPointInput').value = tip.name;
+                            searchStartPOI(tip.name, tip.adcode);
+                        });
+                        resultsContainer.appendChild(item);
+                    });
+                    resultsContainer.classList.remove('hidden');
+                } else hideStartSearchResults();
+            }
+            function showNearbyPOIResults(pois, lnglat) {
+                const container = document.getElementById('nearbyPOIResults');
+                container.innerHTML = '';
+                // "我的位置" 选项
+                const myLoc = document.createElement('div');
+                myLoc.className = 'px-3 py-2 hover:bg-blue-100 cursor-pointer text-sm font-semibold text-blue-700';
+                myLoc.textContent = '我的位置';
+                myLoc.addEventListener('click', function() {
+                    setStartPoint(lnglat, '我的位置');
+                    hideNearbyPOIResults();
+                });
+                container.appendChild(myLoc);
+                // 附近POI
+                pois.slice(0, 5).forEach(poi => {
+                    const item = document.createElement('div');
+                    item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+                    item.textContent = poi.name;
+                    item.addEventListener('click', function() {
+                        setStartPoint(poi.location, poi.name);
+                        hideNearbyPOIResults();
+                    });
+                    container.appendChild(item);
+                });
+                container.classList.remove('hidden');
+            }
+            function hideNearbyPOIResults() {
+                document.getElementById('nearbyPOIResults').classList.add('hidden');
+            }
+            function searchNearbyPOI(lnglat) {
+                // 搜索当前位置附近1000米的POI
+                startPlaceSearch.searchNearBy('', lnglat, 1000, function(status, result) {
+                    if(status === 'complete' && result.info === 'OK' && result.poiList.pois.length > 0) {
+                        showNearbyPOIResults(result.poiList.pois, lnglat);
+                    } else {
+                        // 没有POI也显示“我的位置”
+                        showNearbyPOIResults([], lnglat);
+                    }
+                });
+            }
+            function hideStartSearchResults() { document.getElementById('startSearchResults').classList.add('hidden'); }
+            function showEndSearchResults(tips) {
+                const resultsContainer = document.getElementById('endSearchResults');
+                resultsContainer.innerHTML = '';
+                if(tips && tips.length > 0) {
+                    tips.forEach(tip => {
+                        const item = document.createElement('div');
+                        item.className = 'px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm';
+                        item.textContent = tip.name;
+                        item.addEventListener('click', function() {
+                            document.getElementById('endPointInput').value = tip.name;
+                            searchEndPOI(tip.name, tip.adcode);
+                        });
+                        resultsContainer.appendChild(item);
+                    });
+                    resultsContainer.classList.remove('hidden');
+                } else hideEndSearchResults();
+            }
+            function hideEndSearchResults() { document.getElementById('endSearchResults').classList.add('hidden'); }
+            function searchStartPOI(keyword, adcode) {
+                startPlaceSearch.setCity(adcode || "450300");
+                startPlaceSearch.search(keyword, function(status, result) {
+                    if(status === 'complete' && result.info === 'OK') {
+                        if(result.poiList.pois.length > 0) {
+                            const poi = result.poiList.pois[0];
+                            setStartPoint(poi.location, poi.name);
+                            hideStartSearchResults();
+                        } else { alert('未找到相关起点，请重新输入'); }
+                    } else { alert('起点搜索失败，请重试'); }
+                });
+            }
+            function searchEndPOI(keyword, adcode) {
+                endPlaceSearch.setCity(adcode || "450300");
+                endPlaceSearch.search(keyword, function(status, result) {
+                    if(status === 'complete' && result.info === 'OK') {
+                        if(result.poiList.pois.length > 0) {
+                            const poi = result.poiList.pois[0];
+                            setEndPoint(poi.location, poi.name);
+                            hideEndSearchResults();
+                        } else { alert('未找到相关终点，请重新输入'); }
+                    } else { alert('终点搜索失败，请重试'); }
+                });
+            }
+            function checkRouteButton() {
+                const routeBtn = document.getElementById('routeBtn');
+                if(startPoint && endPoint) {
+                    routeBtn.disabled = false;
+                    routeBtn.classList.remove('bg-gray-400', 'hover:bg-gray-500', 'cursor-not-allowed');
+                    routeBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'cursor-pointer');
+                } else {
+                    routeBtn.disabled = true;
+                    routeBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'cursor-pointer');
+                    routeBtn.classList.add('bg-gray-400', 'hover:bg-gray-500', 'cursor-not-allowed');
+                }
+            }
+            function planRoute() {
+                console.log('Planning route from', startPoint, 'to', endPoint);
+                if(!startPoint || !endPoint) { alert('请先设置起点和终点'); return; }
+                document.getElementById('routePanel').classList.remove('hidden');
+                driving.search(startPoint, endPoint, function(status, result) {
+                    console.log('Driving search status:', status, 'result:', result);
+                    if(status === 'complete') {
+                        if(result.routes && result.routes.length > 0) {
+                            const route = result.routes[0];
+                            const routeInfo = document.getElementById('routeInfo');
+                            routeInfo.innerHTML = `<div class="flex justify-between mb-1"><span>总距离: ${(route.distance/1000).toFixed(1)} 公里</span></div>`;
+                        }
+                        map.setFitView();
+                    } else { 
+                        const errorMsg = result && result.info ? result.info : status;
+                        alert('路线规划失败: ' + errorMsg); 
+                    }
+                });
+            }
+        }
+    /* ---------- 大家去过 ---------- */
+const beenLink      = document.getElementById('beenLink');
+const mobileBeenLink= document.getElementById('mobileBeenLink');
+const beenSection   = document.getElementById('beenSection');
+
+beenLink.addEventListener('click',     ()=> { switchPage(beenSection); loadBeen(); });
+mobileBeenLink.addEventListener('click',()=> { switchPage(beenSection); loadBeen(); mobileMenu.classList.add('hidden'); });
+
+/* ========== 图片压缩工具 ========== */
+async function compressImg(file, maxWidth, quality) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const ratio = Math.min(1, maxWidth / img.width);
+        canvas.width  = img.width  * ratio;
+        canvas.height = img.height * ratio;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ========== 发布攻略（含图片） ========== */
+async function submitBeen() {
+  const content = document.getElementById('beenContent').value.trim();
+  if (!content) return alert('内容不能为空');
+  const resp = await fetch('/api/submit_guide', {
+    method : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body   : JSON.stringify({ content: content, images: beenImages })
+  });
+  const data = await resp.json();
+  if (data.success) {
+    alert('发布成功');
+    /* === 新增：清空图片 === */
+    beenImages = [];
+    document.getElementById('beenImgPreview').innerHTML = '';
+    /* ====================== */
+    document.getElementById('beenContent').value = '';
+    loadBeen();
+  }
+}
+
+/* ========== 点赞 ========== */
+async function likeGuide(guideId, btn) {
+  const resp = await fetch('/api/guide/like', {
+    method : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body   : JSON.stringify({ guide_id: guideId })
+  });
+  const res = await resp.json();
+  if (res.success) {
+    const counter = btn.nextElementSibling;
+    counter.textContent = parseInt(counter.textContent) + 1;
+    btn.classList.replace('text-gray-500', 'text-red-500');
+    btn.onclick = null;          // 简单防重复
+  }
+}
+
+/* ========== 子评论 ========== */
+async function replyGuide(guideId, input) {
+  const content = input.value.trim();
+  if (!content) return alert('请输入回复');
+  const resp = await fetch('/api/guide/reply', {
+    method : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body   : JSON.stringify({ guide_id: guideId, content: content })
+  });
+  const res = await resp.json();
+  if (res.success) {
+    input.value = '';
+    loadBeen();                  // 重新拉取
+  }
+}
+
+/* ========== 渲染列表（含点赞、评论、图片） ========== */
+function loadBeen() {
+  fetch('/api/get_guides')
+    .then(r => r.json())
+    .then(d => {
+      const list = document.getElementById('beenList');
+      list.innerHTML = '';
+      d.guides.forEach(g => {
+        // 图片
+        const imgHtml = g.images
+          ? g.images.map(url => `<img src="${url}" class="w-20 h-20 object-cover rounded mr-2 mb-2">`).join('')
+          : '';
+        // 已有回复
+        const replyHtml = g.replies
+          ? g.replies.map(r => `
+              <div class="bg-gray-100 rounded px-3 py-2 mt-2 text-sm">
+                <span class="font-semibold text-gray-700">${r.phone}</span>：${r.content}
+                <span class="text-gray-400 ml-2">${r.time}</span>
+              </div>`).join('')
+          : '';
+        const div = document.createElement('div');
+        div.className = 'bg-white rounded-xl shadow p-4';
+        div.innerHTML = `
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-semibold text-gray-700">${g.nickname}</span>
+            <span class="text-xs text-gray-400">${g.PublishDate}</span>
+          </div>
+          <p class="text-gray-800 mb-3">${g.content}</p>
+          ${imgHtml ? `<div class="flex flex-wrap mb-3">${imgHtml}</div>` : ''}
+          <div class="flex items-center justify-between text-sm text-gray-500">
+            <div class="flex items-center space-x-4">
+              <button onclick="likeGuide(${g.guide_id},this)" class="${g.user_liked?'text-red-500':'text-gray-500'} hover:text-red-500">
+                <i class="fa fa-heart mr-1"></i>赞 <span>${g.likes}</span>
+              </button>
+              <span class="text-gray-400">|</span>
+              <span>${g.replies.length} 条回复</span>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="flex">
+              <input type="text" placeholder="写回复…" class="flex-1 px-3 py-1 border rounded-l-md">
+              <button onclick="replyGuide(${g.guide_id},this.previousElementSibling)" class="px-4 py-1 bg-blue-500 text-white rounded-r-md">回复</button>
+            </div>
+            ${replyHtml}
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    });
+}
+
+/* ---------- 让 switchPage 也能识别 beenSection ---------- */
+function switchPage(section) {
+    const sections = [homeSection, scenicSection, foodSection, guideSection, beenSection, locationServiceSection];
+    sections.forEach(s => s.classList.add('hidden'));
+    section.classList.remove('hidden');
+    // 特殊处理：切换到位置服务页面时resize地图
+    if (section === locationServiceSection && locationMap) {
+        setTimeout(() => {
+            locationMap.resize();
+        }, 100);
+    }
+    // 特殊处理：切换到必看推荐页面时初始化POI搜索
+    if (section === guideSection && !guidePOIInited) {
+        console.log('Initializing POI for guideSection');
+        const initPOI = () => {
+            if (window.AMap) {
+                locateUserAndSearchPOI();
+                guidePOIInited = true;
+            } else {
+                setTimeout(initPOI, 100);
+            }
+        };
+        initPOI();
+    }
+}
+/* ---------- 个人资料 ---------- */
+const profileModal   = document.getElementById('profileModal');
+const closeProfileModal = document.getElementById('closeProfileModal');
+const profileView    = document.getElementById('profileView');
+const profileEdit    = document.getElementById('profileEdit');
+const btnEditProfile = document.getElementById('btnEditProfile');
+const cancelProfile  = document.getElementById('cancelProfile');
+
+const viewPhone   = document.getElementById('viewPhone');
+const viewNickname= document.getElementById('viewNickname');
+const viewGender  = document.getElementById('viewGender');
+
+const profilePhone   = document.getElementById('profilePhone');
+const profileNickname= document.getElementById('profileNickname');
+const profileGender  = document.getElementById('profileGender');
+const saveProfileBtn = document.getElementById('saveProfile');
+
+/* 打开弹窗：先回显只读区 */
+/* 打开弹窗：先拉最新资料再回显 */
+async function openProfileModal(){
+  const user = await fetchUserProfile();   // ① 关键：异步拿最新
+  if (!user) {                             // 没登录或接口异常
+    alert('请先登录');
+    return;
+  }
+  // ② 回显到“只读区”
+  viewPhone.textContent    = user.phone;
+  viewNickname.textContent = user.nickname;
+  viewGender.textContent   = user.gender;
+
+  // ③ 同步到“编辑区”输入框
+  profilePhone.value   = user.phone;
+  profileNickname.value= user.nickname;
+  profileGender.value  = user.gender;
+
+  // ④ 打开弹窗动画
+  profileModal.classList.remove('hidden');
+  setTimeout(()=>{
+    profileModal.children[1].classList.remove('scale-95','opacity-0');
+    profileModal.children[1].classList.add('scale-100','opacity-100');
+  },10);
+}
+
+/* 关闭弹窗 */
+function closeProfileModalFunc(){
+  profileModal.children[1].classList.add('scale-95','opacity-0');
+  profileModal.children[1].classList.remove('scale-100','opacity-100');
+  setTimeout(()=> profileModal.classList.add('hidden'), 300);
+}
+closeProfileModal.onclick = closeProfileModalFunc;
+profileModal.onclick = (e)=>{ if(e.target===profileModal) closeProfileModalFunc(); };
+
+/* 点击“修改”进入编辑态 */
+btnEditProfile.onclick = ()=>{
+  profileView.classList.add('hidden');
+  profileEdit.classList.remove('hidden');
+};
+
+/* 点击“取消”回到只读态 */
+cancelProfile.onclick = ()=>{
+  profileEdit.classList.add('hidden');
+  profileView.classList.remove('hidden');
+};
+
+/* 保存资料 */
+saveProfileBtn.onclick = async ()=>{
+  const payload = {
+    phone_number: profilePhone.value.trim(),
+    nickname: profileNickname.value.trim(),
+    gender: profileGender.value
+  };
+  const resp = await fetch('/api/profile',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const res = await resp.json();
+  if(res.success){
+    alert('资料已更新');
+    /* 同步顶部昵称 */
+    document.getElementById('userNickname').textContent = payload.nickname;
+    /* 更新 sessionStorage */
+    sessionStorage.setItem('phone', payload.phone_number);
+    sessionStorage.setItem('nickname', payload.nickname);
+    sessionStorage.setItem('gender', payload.gender);
+    closeProfileModalFunc();
+  }else{
+    alert(res.message);
+  }
+};
+
+/* 绑定“个人资料”入口 */
+document.querySelector('#profileDropdown a:nth-child(1)').onclick = (e)=>{
+  e.preventDefault();
+  openProfileModal();
+};
+/* ---------- 取最新用户资料 ---------- */
+async function fetchUserProfile() {
+  try {
+    const r = await fetch('/api/check_login');   // 复用现成接口
+    const d = await r.json();
+    if (d.success && d.user) {
+      // 写回 sessionStorage，保证其他地方也最新
+      sessionStorage.setItem('phone',    d.user.phone);
+      sessionStorage.setItem('nickname', d.user.nickname);
+      sessionStorage.setItem('gender',   d.user.gender);
+      return d.user;                       // {phone, nickname, gender}
+    }
+  } catch (e) {
+    console.error('获取用户资料失败', e);
+  }
+  return null;
+}
+    </script>
+</body>
+</html>
